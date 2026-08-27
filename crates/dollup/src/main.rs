@@ -6,6 +6,7 @@ mod deployment;
 mod fetch;
 mod ops;
 mod repo;
+mod snap;
 mod store;
 
 use std::path::PathBuf;
@@ -52,6 +53,39 @@ enum Verb {
     Verify,
     /// Sweep the store against the lock.
     Gc,
+    /// Push a snapshot blob to a remote. Snapshots are private by default:
+    /// a non-file remote takes --export-state, said out loud.
+    Push {
+        remote: String,
+        /// The snapshot blob (e.g. a .dvsnap from DRT's snapshot store).
+        blob: PathBuf,
+        /// Snapshot name at the remote (default: the blob's file stem).
+        #[arg(long)]
+        name: Option<String>,
+        /// Pin the code-set from this locked package's guest face.
+        #[arg(long, conflicts_with = "code_set")]
+        package: Option<String>,
+        /// Pin the code-set outright (sha256:…), when the snapshot came
+        /// from elsewhere.
+        #[arg(long)]
+        code_set: Option<String>,
+        /// The host identity stamp, verbatim from `dv_snapshot`.
+        #[arg(long)]
+        identity: Option<String>,
+        /// Generic capability names the guest expects at restore. Repeat.
+        #[arg(long = "capability")]
+        capabilities: Vec<String>,
+        /// The DV_ABI_VERSION the blob was captured under.
+        #[arg(long)]
+        dv_abi: Option<String>,
+        /// Acknowledge pushing live state off this machine: a snapshot blob
+        /// is the instance's entire heap (THREAT-NOTES.md).
+        #[arg(long)]
+        export_state: bool,
+    },
+    /// Pull a snapshot: manifest, blob, and the pinned code-set — fetched
+    /// by identity from the sources if absent. Restore stays DRT's verb.
+    Pull { remote: String, name: String },
     /// Publisher-side verbs: index, sign, blobs, keygen.
     #[command(subcommand)]
     Repo(RepoVerb),
@@ -70,10 +104,15 @@ enum RepoVerb {
     },
     /// Generate the blobs/ projection for a static mirror.
     Blobs { dir: PathBuf },
-    /// Generate a keypair. The private key goes to stdout line 1, public
-    /// line 2 — redirect accordingly, and pin the public line in source
-    /// entries.
-    Keygen,
+    /// Generate a keypair. With --out, nothing sensitive touches the
+    /// terminal; without it BOTH KEYS PRINT — redirect line 1 (private)
+    /// somewhere safe. The public line is what source entries pin.
+    Keygen {
+        /// Write `<PREFIX>` (private, mode 0600) and `<PREFIX>.pub`
+        /// instead of printing; only the public key is echoed.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -151,6 +190,40 @@ fn main() -> Result<()> {
             let d = Deployment::open(&dir)?;
             println!("swept {} blob(s)", ops::gc(&d)?);
         }
+        Verb::Push {
+            remote,
+            blob,
+            name,
+            package,
+            code_set,
+            identity,
+            capabilities,
+            dv_abi,
+            export_state,
+        } => {
+            let mut d = Deployment::open(&dir)?;
+            let line = snap::push(
+                &mut d,
+                &remote,
+                snap::PushSpec {
+                    blob_path: blob,
+                    name,
+                    package,
+                    code_set,
+                    identity,
+                    capabilities,
+                    dv_abi,
+                    export_state,
+                },
+            )?;
+            println!("{line}");
+        }
+        Verb::Pull { remote, name } => {
+            let mut d = Deployment::open(&dir)?;
+            for line in snap::pull(&mut d, &remote, &name)? {
+                println!("{line}");
+            }
+        }
         Verb::Repo(v) => match v {
             RepoVerb::Index { dir } => {
                 let idx = repo::index(&dir)?;
@@ -163,10 +236,33 @@ fn main() -> Result<()> {
             RepoVerb::Blobs { dir } => {
                 println!("projected {} blob(s)", repo::blobs(&dir)?);
             }
-            RepoVerb::Keygen => {
+            RepoVerb::Keygen { out } => {
                 let (private, public) = dollup_format::sign::keygen();
-                println!("{private}");
-                println!("{public}");
+                match out {
+                    Some(prefix) => {
+                        use std::io::Write;
+                        use std::os::unix::fs::OpenOptionsExt;
+                        let mut f = std::fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .mode(0o600)
+                            .open(&prefix)?;
+                        writeln!(f, "{private}")?;
+                        let pub_path = prefix.with_extension("pub");
+                        std::fs::write(&pub_path, format!("{public}\n"))?;
+                        println!("{public}");
+                        eprintln!(
+                            "private key: {} (0600) — public: {}",
+                            prefix.display(),
+                            pub_path.display()
+                        );
+                    }
+                    None => {
+                        println!("{private}");
+                        println!("{public}");
+                        eprintln!("both keys printed (line 1 is PRIVATE) — prefer --out <prefix>");
+                    }
+                }
             }
         },
     }

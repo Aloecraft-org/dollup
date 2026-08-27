@@ -15,6 +15,8 @@ pub const LOCK_FILE: &str = "dollup.lock";
 pub struct Lockfile {
     #[serde(default)]
     pub packages: BTreeMap<String, LockedPackage>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub snapshots: BTreeMap<String, LockedSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,4 +38,22 @@ pub struct LockedPackage {
     pub code_set: Option<Hash>,
     /// Path → hash for everything materialized; what `verify` re-checks.
     pub files: BTreeMap<String, Hash>,
+}
+
+/// A pinned snapshot: everything the manifest carried, plus where it came
+/// from — the lock is the record, and a manifest can be re-emitted from it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LockedSnapshot {
+    pub state: Hash,
+    pub code_set: Hash,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dv_abi: Option<String>,
+    /// The remote it was pulled from (or pushed to, when pushing pinned it).
+    pub remote: String,
 }

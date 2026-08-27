@@ -14,10 +14,12 @@ pub mod index;
 pub mod lock;
 pub mod manifest;
 pub mod sign;
+pub mod snapshot;
 pub mod source;
 
 pub use identity::{hash_bytes, Hash};
 pub use index::RepoIndex;
 pub use lock::Lockfile;
 pub use manifest::Manifest;
+pub use snapshot::SnapshotManifest;
 pub use source::{Ref, SourceEntry};

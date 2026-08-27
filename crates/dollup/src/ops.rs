@@ -351,16 +351,34 @@ pub fn verify(deployment: &Deployment) -> Result<Vec<String>> {
             }
         }
     }
+    for (name, locked) in &deployment.lock.snapshots {
+        let on_disk = deployment
+            .dir
+            .join("snapshots")
+            .join(format!("{name}.dvsnap"));
+        match fs::read(&on_disk) {
+            Ok(bytes) if hash_bytes(&bytes) == locked.state => {}
+            Ok(_) => problems.push(format!("snapshot {name}: does not match the lock")),
+            // A pushed-but-never-pulled snapshot has no blob file on disk;
+            // the store check below still covers it.
+            Err(_) => {}
+        }
+        if store.get(&locked.state)?.is_none() {
+            problems.push(format!("snapshot {name}: state absent from the store"));
+        }
+    }
     Ok(problems)
 }
 
-/// `dollup gc`: sweep the store against the lock.
+/// `dollup gc`: sweep the store against the lock — package files and pinned
+/// snapshot state both.
 pub fn gc(deployment: &Deployment) -> Result<usize> {
     let keep: BTreeSet<_> = deployment
         .lock
         .packages
         .values()
         .flat_map(|p| p.files.values().cloned())
+        .chain(deployment.lock.snapshots.values().map(|s| s.state.clone()))
         .collect();
     Store::open(&deployment.store_dir())?.gc(&keep)
 }

@@ -30,8 +30,8 @@ map; [`THREAT-NOTES.md`](THREAT-NOTES.md) says what is and is not checked.
 ```sh
 # Publisher side: a repo is a directory of packages.
 dollup repo index ./my-repo          # scan, validate, write index.json
-dollup repo keygen > keys            # line 1 private, line 2 public
-dollup repo sign ./my-repo --key-file <(head -1 keys)
+dollup repo keygen --out repo.key    # repo.key (private, 0600) + repo.key.pub
+dollup repo sign ./my-repo --key-file repo.key
 dollup repo blobs ./my-repo          # optional: projection for a static mirror
 
 # Consumer side: a deployment is a directory.
@@ -39,7 +39,17 @@ dollup init
 $EDITOR dollup.json                  # add sources; pin the publisher's public key
 dollup add telemetry@^1              # fetch, hash-check, lock, populate code/
 dollup verify                        # re-hash everything against the lock
+
+# Snapshots: migrate a sleeping agent (acceptance demo 2's transport half).
+dollup push file:///mnt/xfer night-clerk.dvsnap --package agent   # machine A
+dollup pull file:///mnt/xfer night-clerk                          # machine B
+# → snapshots/night-clerk.dvsnap, plus the pinned code-set resolved from
+#   the sources by identity; restore is DRT's verb, against that directory.
 ```
+
+Snapshots are **private by default**: pushing to any non-file remote takes
+`--export-state`, acknowledged out loud, because a snapshot blob is the
+instance's entire heap.
 
 Host faces (connector implementations a package carries) are **not**
 materialized by default: `--with-host` admits wasm targets,
@@ -57,10 +67,11 @@ binary that needs nothing else installed.
 
 ## Not yet built (tracked, not forgotten)
 
-Snapshot push/pull and the publicity gate; `update` and `lock` verbs;
-dependency version unification beyond first-wins; the `https` scheme's
-blob-wise fetching (it currently reads tree paths); consuming `drt-config`
-types once DRT reads manifests (SPEC.md §2's intent).
+`update` and `lock` verbs; dependency version unification beyond
+first-wins; the `https` scheme's blob-wise fetching (it currently reads
+tree paths); writable non-file remotes for snapshot push (the `--export-state`
+gate is already in front of them); consuming `drt-config` types once DRT
+reads manifests (SPEC.md §2's intent).
 
 ## License
 
