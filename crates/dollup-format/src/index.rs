@@ -83,7 +83,7 @@ impl RepoIndex {
             .versions
             .iter()
             .rev()
-            .find(|(v, _)| req.map_or(true, |r| r.matches(v)))
+            .find(|(v, _)| req.is_none_or(|r| r.matches(v)))
     }
 }
 

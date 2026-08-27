@@ -37,41 +37,61 @@ impl SourceEntry {
     }
 }
 
-/// The four v1 schemes. Growth is additive; an unknown scheme fails by
-/// name, never silently.
+/// Where bytes come from once a wrapper is stripped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    Https,
+    File,
+}
+
+/// The v1 schemes: a transport, optionally wrapped. `zip+` and `git+` wrap
+/// either transport (a zipball on disk and a git file remote are both
+/// legitimate), and growth is additive; an unknown scheme fails by name,
+/// never silently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scheme {
-    /// A static repo over HTTP: index, then blobs or tree paths.
-    Https,
-    /// One archive URL, fetched whole and extracted. Any forge's zipball is
-    /// such a URL; there is deliberately no forge adapter.
-    ZipHttps,
+    /// A static repo: index, then blobs or tree paths.
+    Plain(Transport),
+    /// One archive, fetched whole and extracted. Any forge's zipball URL is
+    /// such an archive; there is deliberately no forge adapter.
+    Zip(Transport),
     /// A git remote; tags and branches are input, commits are recorded.
-    GitHttps,
-    /// A directory.
-    File,
+    Git(Transport),
 }
 
 impl Scheme {
     pub fn of(url: &str) -> Result<Scheme, RefError> {
-        if url.starts_with("zip+https://") {
-            Ok(Scheme::ZipHttps)
-        } else if url.starts_with("git+https://") {
-            Ok(Scheme::GitHttps)
-        } else if url.starts_with("https://") {
-            Ok(Scheme::Https)
-        } else if url.starts_with("file://") {
-            Ok(Scheme::File)
+        let (wrap, rest) = if let Some(r) = url.strip_prefix("zip+") {
+            (Some(Scheme::Zip as fn(Transport) -> Scheme), r)
+        } else if let Some(r) = url.strip_prefix("git+") {
+            (Some(Scheme::Git as fn(Transport) -> Scheme), r)
         } else {
-            Err(RefError::UnknownScheme(url.to_string()))
+            (None, url)
+        };
+        let transport = if rest.starts_with("https://") {
+            Transport::Https
+        } else if rest.starts_with("file://") {
+            Transport::File
+        } else {
+            return Err(RefError::UnknownScheme(url.to_string()));
+        };
+        Ok(match wrap {
+            Some(w) => w(transport),
+            None => Scheme::Plain(transport),
+        })
+    }
+
+    pub fn transport(&self) -> Transport {
+        match self {
+            Scheme::Plain(t) | Scheme::Zip(t) | Scheme::Git(t) => *t,
         }
     }
 
     /// Does an unsigned source of this scheme trip `require_signatures`?
-    /// `file://` is exempt: a local directory's trust story is the
-    /// filesystem's.
+    /// File transports are exempt: a local path's trust story is the
+    /// filesystem's, however it is wrapped.
     pub fn network(&self) -> bool {
-        !matches!(self, Scheme::File)
+        self.transport() == Transport::Https
     }
 }
 
@@ -110,9 +130,10 @@ impl std::str::FromStr for Ref {
         let (name, version) = match rest.split_once('@') {
             Some((n, v)) => (
                 n,
-                Some(v.parse::<semver::VersionReq>().map_err(|e| {
-                    RefError::BadVersionReq(v.to_string(), e.to_string())
-                })?),
+                Some(
+                    v.parse::<semver::VersionReq>()
+                        .map_err(|e| RefError::BadVersionReq(v.to_string(), e.to_string()))?,
+                ),
             ),
             None => (rest, None),
         };
@@ -145,8 +166,13 @@ mod tests {
         assert_eq!(r.name, "can");
         assert_eq!(
             Scheme::of(r.source.as_deref().unwrap()).unwrap(),
-            Scheme::ZipHttps
+            Scheme::Zip(Transport::Https)
         );
+        assert_eq!(
+            Scheme::of("git+file:///srv/repo.git").unwrap(),
+            Scheme::Git(Transport::File)
+        );
+        assert!(!Scheme::of("git+file:///srv/repo.git").unwrap().network());
 
         assert!(matches!(
             "ftp://x#y".parse::<Ref>(),

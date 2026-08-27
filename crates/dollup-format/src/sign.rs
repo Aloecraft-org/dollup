@@ -50,7 +50,10 @@ pub fn sign(private_key: &str, index_bytes: &[u8]) -> Result<String, SignError> 
         .try_into()
         .map_err(|_| SignError::Bytes("private key must be 32 bytes".into()))?;
     let key = SigningKey::from_bytes(&bytes);
-    Ok(format!("{PREFIX}{}", B64.encode(key.sign(index_bytes).to_bytes())))
+    Ok(format!(
+        "{PREFIX}{}",
+        B64.encode(key.sign(index_bytes).to_bytes())
+    ))
 }
 
 /// Verify a spelled signature over index bytes against pinned keys; any-of
@@ -70,8 +73,8 @@ pub fn verify<'k>(
         let key_bytes: [u8; 32] = decode(spelled, spelled)?
             .try_into()
             .map_err(|_| SignError::Bytes("public key must be 32 bytes".into()))?;
-        let key = VerifyingKey::from_bytes(&key_bytes)
-            .map_err(|e| SignError::Bytes(e.to_string()))?;
+        let key =
+            VerifyingKey::from_bytes(&key_bytes).map_err(|e| SignError::Bytes(e.to_string()))?;
         if key.verify(index_bytes, &sig).is_ok() {
             return Ok(spelled);
         }
@@ -87,12 +90,18 @@ mod tests {
     fn sign_and_verify_round_trip() {
         let (private, public) = keygen();
         let sig = sign(&private, b"index bytes").unwrap();
-        assert_eq!(verify(&[public.clone()], &sig, b"index bytes").unwrap(), public);
+        assert_eq!(
+            verify(&[public.clone()], &sig, b"index bytes").unwrap(),
+            public
+        );
         assert!(matches!(
             verify(&[public.clone()], &sig, b"tampered"),
             Err(SignError::Verify)
         ));
         let (_, other) = keygen();
-        assert!(verify(&[other, public], &sig, b"index bytes").is_ok(), "any-of");
+        assert!(
+            verify(&[other, public], &sig, b"index bytes").is_ok(),
+            "any-of"
+        );
     }
 }

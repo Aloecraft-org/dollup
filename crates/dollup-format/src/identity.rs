@@ -114,6 +114,9 @@ mod tests {
     #[test]
     fn renaming_the_entry_module_moves_the_code_set() {
         let guest = set(&[("guest/a.dlua", "x"), ("guest/b.dlua", "y")]);
-        assert_ne!(code_set_identity("a", &guest), code_set_identity("b", &guest));
+        assert_ne!(
+            code_set_identity("a", &guest),
+            code_set_identity("b", &guest)
+        );
     }
 }
