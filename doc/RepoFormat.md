@@ -266,11 +266,65 @@ Two additions, both small, both additive:
   design: pure data, no execution, and it makes the admission checks in
   `CodeResolution.md` §5 sharper for packages that have no host face at all.
 
-## 8. Still open
+## 8. Signing
 
-Signing — unchanged in status and more pointed now that host faces exist:
-v1's trust statement remains "you chose the source, and the bytes matched the
-index." Namespacing. Whether `blobs/` should be the only published form on a
-static mirror, dropping the tree. Whether a capability face should be allowed
-to declare a scope *type* that no shipped scope validator implements, or
-whether that must fail at admission.
+Host faces made "you chose the source" too small a trust statement to stop
+at, so signing is in v1, and it is deliberately the most boring construction
+available.
+
+**The trust anchor is the source entry, never the repo.** A source may carry
+public keys:
+
+```json
+"sources": [
+  { "url": "https://dollup.aloecraft.org/std-repo/",
+    "keys": ["ed25519:BASE64…"] },
+  { "url": "zip+https://github.com/Aloecraft-org/dollup-standard/archive/refs/heads/main.zip",
+    "keys": ["ed25519:BASE64…"] }
+]
+```
+
+A bare string remains a valid source and means *unsigned*. The scaffold pins
+the standard key beside the standard URLs — the key is distributed exactly
+the way the URLs are, as lines in a file the operator owns, and removing it
+is the same one-line edit as removing them. This is also precisely the shape
+a third party uses: a vendor shipping a DRT swarm that calls home
+distributes `{url, keys}` for their own repo with their application, and
+dollup treats them identically to the standard source. There is no key
+hierarchy and no root of trust beyond the source list, on purpose.
+
+**What is signed is the index, in-tree.** `index.json.sig` sits beside
+`index.json` and contains an ed25519 signature over the exact bytes of
+`index.json`, spelled `ed25519:<base64>` — the same encoding as keys, one
+line, no framing to parse. Because every artifact hashes into the index,
+signing the index signs the repo. Because the signature is a file in the
+tree, every transport carries it for free: the zipball contains it, the git
+clone contains it, the mirror serves it, and the identical signature
+verifies the identical bytes over all four schemes.
+
+**Verification policy, crisp:** keys present on the source → verification is
+mandatory and failure is fatal, naming the source and the key. Keys absent →
+the source is unsigned and every listing says so. A deployment-level
+`require_signatures` (scaffolded **true**) makes an unsigned network source
+an error at resolve time; `file://` sources are exempt, because a local
+directory's trust story is the filesystem's.
+
+**What this buys, and does not.** It buys: these bytes were indexed by a
+holder of a key you pinned. It does not buy freshness — a mirror can serve
+yesterday's correctly-signed index and dollup cannot tell (the rollback and
+freeze attacks TUF exists to address; the index's `created` field plus a
+client-side maximum age is the obvious future mitigation, not built).
+It does not buy revocation, and multiple keys per source exist for rotation,
+not for ceremony. The threat notes carry these limits verbatim.
+
+Keys never appear in-tree. A repo carrying its own public key proves only
+that it agrees with itself; verification reads keys from the source list and
+nowhere else.
+
+## 9. Still open
+
+Namespacing. Whether `blobs/` should be the only published form on a static
+mirror, dropping the tree. Whether a capability face may declare a scope
+*type* no shipped scope validator implements, or must fail at admission.
+Freshness (§8). Snapshot push signing — snapshots are private point-to-point
+transfers, so it is not obviously worth having, but it is not decided.

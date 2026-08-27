@@ -235,11 +235,15 @@ nothing while buying resilience. Consequences:
 - Multiple sources are first-class in the resolver (an ordered source list),
   so private mirrors, air-gapped copies, and vendor repos are the same code
   path as the public one.
-- Namespacing, publisher identity, and signing remain **open**, and host
-  faces sharpen rather than change that. v1's trust statement stays honest
-  and small: you chose the source, and the bytes matched the index. A public
-  repo needs artifact signatures (TUF-shaped or simpler) before it can claim
-  more; that design is not attempted here.
+- **Signing is in v1** (`doc/RepoFormat.md` §8): a source entry carries
+  pinned ed25519 keys, the repo carries a detached signature over its index,
+  and every transport carries the signature for free because it is a file in
+  the tree. The trust anchor is the source list and nothing else — the
+  scaffold distributes the standard key exactly as it distributes the
+  standard URLs, and a third party distributing a swarm distributes theirs
+  the same way. The trust statement becomes: you chose the source, and a
+  holder of the key you pinned indexed these bytes. Freshness and
+  namespacing remain honestly open.
 
 ## 9. Upgrade policy (candidate, not settled)
 
@@ -285,8 +289,9 @@ including capability contracts and host-face targets, with admission-time
 named failures; the host-face materialization gates; snapshot envelope with
 local and file-remote push/pull and the publicity gate; `verify` and `gc`.
 
-**Seams only:** signing; the static mirror's generation script; whatever DRT
-needs to actually *load* a host face, which is DRT's timeline, not this one.
+**Seams only:** the static mirror's generation script; freshness enforcement
+for signed indexes; whatever DRT needs to actually *load* a host face, which
+is DRT's timeline, not this one.
 
 **Out, captured:** registry service and index generator; connector loading;
 publisher identity; any UI; dollup's own delivery (it ships as a static
@@ -307,8 +312,8 @@ else installed).
 
 ## 13. Open questions (deliberately)
 
-Upgrade policy confirmation (§9); repo namespacing and signing (§8 — more
-pointed now that host faces exist); whether snapshot transport remains in
+Upgrade policy confirmation (§9); repo namespacing, and signed-index
+freshness (§8); whether snapshot transport remains in
 dollup long-term or migrates toward DRT once the snapshot store trait grows a
 remote impl; store location and sharing (per-user XDG default vs
 deployment-shared read-only store); whether a capability face may declare a
