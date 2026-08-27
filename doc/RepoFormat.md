@@ -121,6 +121,31 @@ Any subset is legal. Three combinations are worth naming:
 - **all three** — a whole capability, both sides. The SocketCAN adapter, the
   ThreeJS binding. §6 governs it.
 
+### 4a. Two hashes, because a package is a distribution unit and not a pinning unit
+
+Bundling three faces in one package collides with §9 unless one thing is
+stated: **a package's identity and a code-set's identity are different
+hashes.**
+
+- **Package identity** = the hash of everything the package contains. It is
+  what the lockfile records and what `verify` re-checks.
+- **Code-set identity** = the hash of the **guest face alone**. It is what an
+  instance pins at spawn and what a snapshot restores against, because the
+  guest face is the only part that is ever registered into an instance via
+  `dv_register_code`. A host face lives in the host process and was never
+  inside the guest.
+
+Without this split, shipping a connector fix would bump the package version,
+change the pinned code-set, and strand every sleeping agent — the exact
+opposite of §9's "connector implementations upgrade freely underneath sleeping
+agents". With it, §9 holds unchanged: code is exact-match on the guest face,
+capabilities are interface-match on the contract, and implementations move
+freely beneath both.
+
+The alternative considered was splitting the faces into three related packages
+so they version independently. Two hashes gets the same property while keeping
+one envelope, which is §2's whole argument, so the faces stay together.
+
 ## 5. The manifest
 
 ```json
