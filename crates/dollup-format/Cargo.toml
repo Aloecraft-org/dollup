@@ -1,0 +1,21 @@
+[package]
+name = "dollup-format"
+description = "The dollup artifact formats: manifest, repo index, lockfile, sources, identity, signing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand_core = { workspace = true }
+semver = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

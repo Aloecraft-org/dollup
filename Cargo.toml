@@ -1,0 +1,29 @@
+# The dollup workspace: a format crate (pure types, hashing, signing — the
+# things a static mirror generator or DRT itself could consume without taking
+# the binary) and the binary crate (store, fetch, verbs).
+[workspace]
+resolver = "2"
+members = ["crates/dollup-format", "crates/dollup"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/Aloecraft-org/dollup"
+
+[workspace.dependencies]
+dollup-format = { path = "crates/dollup-format", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+semver = { version = "1", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }
+tempfile = "3"
