@@ -261,10 +261,48 @@ browser cases; `accept_bytecode`; a store-ref form
 (`{"package": {"ref": "…"}}`) resolved by **lookup in a local store, never a
 fetch**, failing by name with "not in the store" when absent.
 
+**Phase 3 — the connector side (§11).** The loadable scope-type registry,
+then the external `ConnectorWiring.backing`, in that order and on DRT's own
+schedule — the second is gated on the wasm-component seam SPEC.md §7 already
+owns.
+
 Phase 1 is the only one dollup is waiting on, and it can land after DRT's
 first core implementation is done rather than inside it.
 
-## 11. Open, deliberately
+## 11. Two connector-side additions, ordered by risk
+
+Dollup's spec has since settled that a package may carry a **capability
+contract** (name, scope type, call names, shape version — pure data) and a
+**host face** (a connector implementation per target, wasm component
+preferred). That adds two asks here. Both are additive; neither touches the
+current milestone; and they are deliberately ordered:
+
+**First, the scope-type registry becomes loadable.** SPEC.md §5 already says
+scope-types are declared per capability in a registry; a capability contract
+is that registry's contents arriving from the code root instead of being
+compiled in. This has no execution semantics at all, and it sharpens the
+admission checks in §5 for *every* package — including the majority that
+will never ship a host face. It also lets a build refuse, by name, a config
+that wires a connector to a capability whose contract it has never seen.
+Highest value, lowest risk; worth doing well before the second.
+
+**Second, `ConnectorWiring.backing` accepts an external reference.** Today
+it resolves a name to a compiled-in backing; it needs a form that names a
+package's host face, so that writing it in root config is the operator act
+that admits the implementation — layer 2 of dollup's four layers, exactly
+where SPEC.md §7 already puts dynamic loading, and gated on the same
+wasm-component seam §7 defers to. Until this exists, host faces placed in a
+code root simply sit unreferenced, which is the correct inert state rather
+than a broken one. Nothing about this ask asks §7 to move faster.
+
+One boundary worth writing into GUARANTEES.md when this lands: **DRT never
+verifies provenance — not signatures, not sources, nothing.** Dollup signs
+and verifies on its side of the directory; DRT hash-checks the index for
+internal consistency and stops. Splitting the duty keeps the boundary the
+directory, and keeps DRT from growing a second, weaker copy of a trust
+decision that belongs to whoever fills the code root.
+
+## 12. Open, deliberately
 
 Where the package manifest type lives (`drt-config`, so LuaCATS generation
 covers artifacts too — versus a dollup crate donated upstream once DRT
@@ -272,24 +310,3 @@ actually reads it); index and manifest file names; whether the code root is
 per-deployment or shared read-only across several; whether `version` in a
 `PackageRef` is worth having at all when the index already pins one build.
 
-## 12. Addendum: what host faces add to this ask
-
-Since this document was written, dollup's spec settled that a package may
-carry a **host face** — a connector implementation per target — alongside its
-guest modules and a capability contract (`doc/RepoFormat.md`). That adds two
-items to the list above, both additive, and neither on the critical path:
-
-- **`ConnectorWiring.backing` should accept an external reference**, not only
-  a name the build registered at compile time. Naming one in root config is
-  then the operator act that admits it — layer 2, unchanged. Until this
-  exists, dollup can still place host faces; they simply sit unreferenced,
-  which is the correct inert state rather than a broken one.
-- **The scope-type registry should be loadable.** SPEC.md §5 already says
-  scope-types are declared per capability in a registry; a capability face is
-  that registry's contents arriving from outside rather than compiled in.
-
-The second is worth doing well before the first. A capability contract is
-pure data — a name, a scope type, a list of call names, a shape version — with
-no execution semantics at all, and it makes the admission checks in §5 sharper
-for every package, including the ones that will never have a host face. It is
-the highest-value and lowest-risk piece of the whole design.
