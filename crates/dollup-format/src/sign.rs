@@ -91,11 +91,11 @@ mod tests {
         let (private, public) = keygen();
         let sig = sign(&private, b"index bytes").unwrap();
         assert_eq!(
-            verify(&[public.clone()], &sig, b"index bytes").unwrap(),
+            verify(std::slice::from_ref(&public), &sig, b"index bytes").unwrap(),
             public
         );
         assert!(matches!(
-            verify(&[public.clone()], &sig, b"tampered"),
+            verify(std::slice::from_ref(&public), &sig, b"tampered"),
             Err(SignError::Verify)
         ));
         let (_, other) = keygen();
