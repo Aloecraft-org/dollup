@@ -54,6 +54,11 @@ The envelope is shared so the store, transport, verbs, and integrity checks
 are written once. The kinds differ in **publicity defaults** (§7): packages
 are public artifacts; snapshots are live state and are private by default.
 
+A `package` carries up to three **faces** — a capability contract, guest
+`.dlua` modules, and a host-side connector implementation per target — of
+which any subset is legal. `doc/RepoFormat.md` §4 defines them; §6 governs
+what carrying a host face does and does not permit.
+
 Manifest types are **drt-config serde types** (source of truth; LuaCATS defs
 generated, never authored). Dollup depends on `drt-config` and adds nothing
 schema-shaped of its own.
@@ -69,13 +74,22 @@ a re-hash, not a format break.)
 **Sources are schemes.** Same move as endpoint refs: implement the minimum
 now, grow additively, never break format.
 
+- `https://` — v1. A static repo: an index plus content-addressed blobs
+  behind plain nginx. This is the hosted mirror (§8), and it is a directory
+  served by a web server, not a service.
+- `zip+https://` — v1. One archive URL, fetched whole, extracted, and
+  verified against the index inside it. Any forge's zipball endpoint is such
+  a URL; dollup never grows a forge adapter, because knowing one forge means
+  being asked to know four.
 - `git+https://` — v1. Tags and branches accepted as *input*; resolution
   records the commit SHA and content hashes. Nothing mutable is ever a pin.
 - `file://` — v1. Local paths and file-based remotes (a directory is a valid
   remote; rsync/scp/nfs become transport for free).
-- registry scheme — later (§8). Additive; existing lockfiles remain valid
-  because identity is content, and a registry is only a new route to the same
-  bytes.
+
+All four resolve to the same tree and therefore the same content hash, so a
+lockfile is portable across them and the source list is a genuine fallback
+list. `doc/RepoFormat.md` is normative for the format; this section names the
+schemes.
 
 **Select-within-repo:** a git source may contain many packages. An index file
 at the repo root enumerates them (name → subpath). A ref is
@@ -97,7 +111,9 @@ itself. Verbs act on the deployment in the current directory or an explicit
 
 ## 4. Package manifest
 
-Fields, all declarative:
+`doc/RepoFormat.md` §5 is normative for the full shape, including the three
+faces and host-face targets. The fields below are the ones this spec's
+reasoning depends on. All declarative:
 
 - `name`, `version` (semver)
 - `modules`: module name → file (host-side resolution; code is handed to the
@@ -114,9 +130,18 @@ Fields, all declarative:
   lock, not the manifest)
 - `diluvium`: minimum language version; `dv_abi`: accepted
   `DV_ABI_VERSION` range
-- `source_only`: always true in v1. Compiled chunks are rejected at both
-  publish and install. There is no bytecode verifier; source-only is a
-  mitigation, not a solution, and the format does not pretend otherwise.
+- `guest.source_only`: true unless the deployment opts out loudly. Compiled
+  diluvium chunks are rejected at publish and install. There is no bytecode
+  verifier; source-only is a mitigation, not a solution, and the format does
+  not pretend otherwise. It sits under `guest` because it is a claim about
+  the guest face alone — a host face is binary by definition, and a top-level
+  flag would have made the two contradict each other.
+- `capability`: the contract a package defines — capability name, scope type,
+  call names, shape version. Pure data, no execution semantics; it is the
+  thing a guest face and a host face are both checked against.
+- `host.targets`: connector implementations per Rust target triple, each
+  tagged with its ABI (wasm component, browser module-with-glue, native
+  shared object). Materialization is gated per §6.
 
 **Failure is at admission time, by name.** A package declaring a capability
 the deployment ceiling cannot satisfy, a connector the build does not carry,
@@ -157,14 +182,27 @@ each a separate deliberate step, each in existing vocabulary (no new nouns):
 
 Install stops after layer 1. Layers 2–4 belong to DRT and its operator.
 
-**v1 packages are pure Diluvium.** The manifest reserves
-`provides_connectors`; any artifact using it is **rejected in v1 with a
-named error**. The distribution mechanism for connector implementations is
-deliberately open: the fd-channel plugin protocol is rejected as-is (the
-mechanism must run while DRT is live, be distinct from it, and be
-capability-managed through the layers above), and the wasm-component seam is
-deferred in DRT's own spec. The reserved field exists so the envelope never
-needs re-minting when this lands; the mechanism decision is not made here.
+**Packages may carry host-side code, and install is still inert.** A package
+may declare a capability contract and ship a connector implementation for it
+(`doc/RepoFormat.md` §§4–6). Placing that implementation on disk enables
+nothing: DRT loads a connector because root config *names* it in the connector
+registry — layer 2, which was always "a process-level trust act by the
+operator". The four layers are unchanged; a package may now carry material
+addressed to layer 2 as well as layer 1.
+
+Unchanged doctrine is not the same as unchanged risk, so the tooling takes the
+asymmetry §7 takes with snapshots, one mechanism serving a second use: a host
+face is **not materialized by default**, wasm targets need `--with-host`, and
+a native target needs `--with-host-native` and says the true thing — that
+installing one is the same class of act as `apt install`, bounded by neither
+the capability model nor the instruction budget.
+
+The fd-channel plugin protocol stays rejected as-is: it execs an absolute path
+and moves opaque frames, so there is no admission layer between layer 1 and a
+running native process. The wasm component is the preferred host-face target
+for exactly the reason DRT's own §7 prefers it — it is sandboxable, and a
+shared object is not. Dollup may distribute host faces before DRT can load
+them; placement is inert, so the two timelines do not block each other.
 
 ## 7. Snapshot publicity asymmetry
 
@@ -178,23 +216,30 @@ difference:
   snapshots). A registry never lists snapshots publicly; snapshot transport
   over a registry, if it ever exists, is authenticated point-to-point.
 
-## 8. Registry (later, and deliberately boring)
+## 8. The hosted repo (defined, not deferred)
 
 The hosted artifact repo is a **static mirror**: content-addressed blobs plus
-a generated JSON index behind plain nginx. No server logic, no accounts in
-v1 of the registry itself, no dynamic anything. This shape is already proven
-in-house (the release mirror: nginx + a generation script + stable paths;
-Artifactory previously rejected as overkill). Consequences:
+a generated JSON index behind plain nginx. No server logic, no accounts, no
+dynamic anything. This shape is already proven in-house (the release mirror:
+nginx + a generation script + stable paths; Artifactory previously rejected
+as overkill), and `doc/RepoFormat.md` defines it.
 
-- Self-hosting a registry = serve a directory. A base-URL change in the
-  source list is the entire migration.
+The standard source is `https://dollup.aloecraft.org/std-repo/`, with
+`zip+https://` against the public `dollup-standard` repo as its peer. The
+scaffold names both, pointing at the same content: identity is the content
+hash, so they are interchangeable rather than ranked, and naming two costs
+nothing while buying resilience. Consequences:
+
+- Self-hosting a repo = serve a directory. A base-URL change in the source
+  list is the entire migration.
 - Multiple sources are first-class in the resolver (an ordered source list),
-  so private mirrors, air-gapped copies, and vendor registries are the same
-  code path as the public one.
-- Namespacing, publisher identity, and signing are **open**. v1's trust
-  statement is honest and small: you chose the git repo. A public registry
-  needs artifact signatures (TUF-shaped or simpler) before it can claim more
-  than "bytes matched the index"; that design is not attempted here.
+  so private mirrors, air-gapped copies, and vendor repos are the same code
+  path as the public one.
+- Namespacing, publisher identity, and signing remain **open**, and host
+  faces sharpen rather than change that. v1's trust statement stays honest
+  and small: you chose the source, and the bytes matched the index. A public
+  repo needs artifact signatures (TUF-shaped or simpler) before it can claim
+  more; that design is not attempted here.
 
 ## 9. Upgrade policy (candidate, not settled)
 
@@ -233,14 +278,15 @@ item, not by default.
 
 ## 12. v1 cut and acceptance
 
-**In:** content-addressed store; `git+https` and `file` schemes; repo index
-and select-within-repo; lockfile; resolved-directory population; package
-manifest with capability/connector declarations and admission-time named
-failures; snapshot envelope with local and file-remote push/pull and the
-publicity gate; `verify` and `gc`.
+**In:** content-addressed store; all four schemes (`https`, `zip+https`,
+`git+https`, `file`); the repo format and index; select-within-repo;
+lockfile; resolved-directory population; the three-faced package manifest
+including capability contracts and host-face targets, with admission-time
+named failures; the host-face materialization gates; snapshot envelope with
+local and file-remote push/pull and the publicity gate; `verify` and `gc`.
 
-**Seams only:** registry scheme; connector distribution (reserved field,
-rejected artifacts); signing.
+**Seams only:** signing; the static mirror's generation script; whatever DRT
+needs to actually *load* a host face, which is DRT's timeline, not this one.
 
 **Out, captured:** registry service and index generator; connector loading;
 publisher identity; any UI; dollup's own delivery (it ships as a static
@@ -261,10 +307,16 @@ else installed).
 
 ## 13. Open questions (deliberately)
 
-Final name and collision check; repo placement (own repo vs a crate in the
-diluvium-drt workspace; leaning own repo, consuming drt-config); connector
-distribution mechanism (§6); upgrade policy confirmation (§9); registry
-namespacing and signing (§8); whether snapshot transport remains in dollup
-long-term or migrates toward DRT once the snapshot store trait grows a
+Upgrade policy confirmation (§9); repo namespacing and signing (§8 — more
+pointed now that host faces exist); whether snapshot transport remains in
+dollup long-term or migrates toward DRT once the snapshot store trait grows a
 remote impl; store location and sharing (per-user XDG default vs
-deployment-shared read-only store).
+deployment-shared read-only store); whether a capability face may declare a
+scope type no shipped validator implements.
+
+**Settled since drafting.** The name: `dollup` is unclaimed on crates.io with
+zero registry hits. Repo placement: own repo consuming `drt-config`, which is
+viable because `drt-config` → `drt-caps` → serde/rmpv/thiserror pulls in no C
+core, so dollup builds with no toolchain beyond cargo. Connector distribution
+(§6): decided — packages carry host faces, gated, with the wasm component
+preferred. The hosted repo (§8): defined, not deferred.

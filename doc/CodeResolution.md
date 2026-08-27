@@ -271,3 +271,25 @@ covers artifacts too — versus a dollup crate donated upstream once DRT
 actually reads it); index and manifest file names; whether the code root is
 per-deployment or shared read-only across several; whether `version` in a
 `PackageRef` is worth having at all when the index already pins one build.
+
+## 12. Addendum: what host faces add to this ask
+
+Since this document was written, dollup's spec settled that a package may
+carry a **host face** — a connector implementation per target — alongside its
+guest modules and a capability contract (`doc/RepoFormat.md`). That adds two
+items to the list above, both additive, and neither on the critical path:
+
+- **`ConnectorWiring.backing` should accept an external reference**, not only
+  a name the build registered at compile time. Naming one in root config is
+  then the operator act that admits it — layer 2, unchanged. Until this
+  exists, dollup can still place host faces; they simply sit unreferenced,
+  which is the correct inert state rather than a broken one.
+- **The scope-type registry should be loadable.** SPEC.md §5 already says
+  scope-types are declared per capability in a registry; a capability face is
+  that registry's contents arriving from outside rather than compiled in.
+
+The second is worth doing well before the first. A capability contract is
+pure data — a name, a scope type, a list of call names, a shape version — with
+no execution semantics at all, and it makes the admission checks in §5 sharper
+for every package, including the ones that will never have a host face. It is
+the highest-value and lowest-risk piece of the whole design.
