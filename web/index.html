@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>dollup — distribution for Diluvium and DRT</title>
-<meta name="description" content="A fetcher and resolver over a content-addressed store. Install is inert; config is authority.">
+<meta name="description" content="Install Diluvium programs and the capabilities they run on.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237a4b2a'/%3E%3Cpath d='M16 7v12m0 0l-4.5-4.5M16 19l4.5-4.5M9.5 24h13' stroke='%23fbfaf8' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #fbfaf8; --fg: #1a1a1a; --dim: #5c5a55; --line: #e2ded6;
@@ -75,34 +76,42 @@ footer a { margin-right: 1.2rem; }
 
 <header>
   <h1 class="mark">dollup</h1>
-  <p class="tag">Distribution for <a href="https://github.com/Aloecraft-org/diluvium">Diluvium</a>
-  programs and <a href="https://github.com/Aloecraft-org/diluvium-drt">DRT</a> capabilities.
-  A fetcher and resolver over a content-addressed store.</p>
+  <p class="tag">Install <a href="https://github.com/Aloecraft-org/diluvium">Diluvium</a>
+  programs and the capabilities they run on.</p>
   <span class="status">pre-release · the format is settling</span>
 </header>
 
 <section>
-  <h2>What it is</h2>
-  <p>Not a package manager. <strong>Install is inert; config is authority.</strong>
-  Fetching an artifact confers nothing — a program runs only when your root
-  config names it and you supply the scopes. Dollup never grants, never runs,
-  and never speaks the instance ABI. Its whole job is to put the right bytes
-  in a directory the runtime reads.</p>
-  <p>Manifests are declarative and can express no behaviour, so there is no
-  install-time code to audit. Identity is the content hash, which is why the
-  same package fetched from this mirror, from a git remote, or from a zipball
-  is one artifact with one identity — mirrors and air-gapped copies are free.</p>
-</section>
-
-<section>
-  <h2>The standard repo</h2>
-  <pre><code><span class="c"># a deployment is a directory</span>
+  <h2>Get started</h2>
+  <pre><code><span class="c"># a deployment is a directory you own</span>
 dollup init
 dollup source add https://dollup.aloecraft.org/std-repo/ \
     --key __DOLLUP_STD_PUBKEY__
 dollup add hello</code></pre>
-  <p>That fetches, verifies, locks and materialises — and stops. Point the
-  runtime at the deployment to actually run anything.</p>
+  <p>You now have the program, everything it depends on, and a lockfile
+  recording exactly which bytes arrived. Point
+  <a href="https://github.com/Aloecraft-org/diluvium-drt">DRT</a> at the
+  directory to run it.</p>
+</section>
+
+<section>
+  <h2>What you get</h2>
+  <p>A <strong>deployment</strong>: one directory holding your programs, the
+  sources they came from, and a lockfile pinning every version and hash. Copy
+  it to another machine and you get the same thing, byte for byte — that is
+  what makes a deployment something you can reproduce, hand to a colleague, or
+  rebuild after a disk dies.</p>
+  <p><strong>Everything is verified on the way in.</strong> Packages are named
+  by the hash of their contents and listed in an index the publisher signs, so
+  dollup can tell you that what arrived is what they published. Because a
+  package's name is its content, the same one fetched from this mirror, a git
+  remote, or a zipball is a single artifact — running your own mirror or an
+  offline copy costs you a changed URL and nothing else.</p>
+  <p><strong>Nothing executes during an install.</strong> A manifest is data
+  and can express no behaviour, so adding a package is never running someone's
+  setup script. What a program is then allowed to <em>do</em> — which files,
+  which network, which database — stays in your config, where you can read it
+  in one place. Installing something never grants it anything.</p>
 </section>
 
 <section>

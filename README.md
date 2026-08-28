@@ -1,15 +1,25 @@
 # dollup
 
-Distribution for [Diluvium](https://github.com/Aloecraft-org/diluvium) /
-[DRT](https://github.com/Aloecraft-org/diluvium-drt) artifacts: a **fetcher
-and resolver over a content-addressed store**, plus transport for
-hibernated-instance snapshots.
+Install [Diluvium](https://github.com/Aloecraft-org/diluvium) programs and
+the capabilities they run on, plus move hibernated instances between
+machines.
 
-It is deliberately not a package manager. Install is inert; config is
-authority; the manifest is declarative, never executable; DRT never fetches
-— dollup populates the directory DRT reads, and the trust boundary is the
-directory, not the tool. [`SPEC.md`](SPEC.md) is the founding spec and the
-map; [`THREAT-NOTES.md`](THREAT-NOTES.md) says what is and is not checked.
+dollup fetches programs into a **deployment** — one directory holding the
+code, the sources it came from, and a lockfile pinning every version and
+hash, so the same deployment rebuilds byte for byte anywhere. Packages are
+named by the hash of their contents and listed in an index the publisher
+signs, which is what lets a mirror, a git remote and an offline copy be the
+same artifact rather than three you have to trust separately.
+
+Three properties shape everything else, and they are worth knowing early:
+**nothing executes during an install** (a manifest is data, so there is no
+setup script to audit); **installing never grants** — what a program may do
+lives in your config, not in the package; and **[DRT](https://github.com/Aloecraft-org/diluvium-drt)
+never fetches**, so the trust boundary is the directory dollup writes rather
+than dollup itself.
+
+[`SPEC.md`](SPEC.md) is the founding spec and the map;
+[`THREAT-NOTES.md`](THREAT-NOTES.md) says what is and is not checked.
 
 | doc | what |
 |---|---|
