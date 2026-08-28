@@ -1,9 +1,17 @@
 # web/
 
 The landing page for `dollup.aloecraft.org`. One file, no build step, no
-outbound requests: system fonts, inline styles, and a little JavaScript that
-reads `/std-repo/index.json` — the same index dollup reads — so the published
-package list cannot drift from what is actually published.
+outbound requests: system fonts, plain CSS on custom properties, and a little
+JavaScript that reads `/std-repo/index.json` — the same index dollup reads —
+so the published package list cannot drift from what is actually published.
+
+**Dark is the default**, as on diluvium.aloecraft.org, with a toggle in the
+hero that switches to light and remembers the choice in `localStorage` under
+`dollup-theme`. The inline script that applies a stored choice sits in
+`<head>` deliberately: it has to run before first paint, or a light-mode
+visitor sees a flash of dark on every load. `prefers-color-scheme` is
+intentionally *not* consulted — the ask was a dark default, not a
+system-following one.
 
 `__DOLLUP_STD_PUBKEY__` is substituted with the real signing key by
 [`../std-repo/publish.sh`](../std-repo/publish.sh) at publish time, so what a

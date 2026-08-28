@@ -20,7 +20,7 @@ import sys
 ANCHOR_PHRASES = [
     "Install",
     "deployment",
-    "Nothing executes during an install",
+    "Nothing executes on install",
     "dollup add",
     "dollup source add",
 ]
@@ -44,8 +44,16 @@ def check(path: pathlib.Path) -> list[str]:
         bad.append("nothing fetches /std-repo/index.json — the package table would stay empty")
     if 'rel="icon"' not in text:
         bad.append('no <link rel="icon"> — the page will 404 for a favicon')
-    if "prefers-color-scheme" not in text:
-        bad.append("no prefers-color-scheme block — the page must work in dark and light")
+    # Both themes must exist and be reachable. How the page selects between
+    # them is its business — a toggle (dark default, as on the diluvium site)
+    # or the system preference — but a page with only one theme is a
+    # regression whichever mechanism it uses.
+    has_toggle = '[data-theme="light"]' in text and "dollup-theme" in text
+    if not has_toggle and "prefers-color-scheme" not in text:
+        bad.append(
+            "only one theme is defined — the page needs a light and a dark, "
+            "selected either by a persisted toggle or by prefers-color-scheme"
+        )
 
     # Every byte is served from our own origin, on the page that hands out a
     # signing key. A webfont CDN is the usual way this gets lost.
