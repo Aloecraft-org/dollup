@@ -311,3 +311,74 @@ fn zip_dir(dir: &Path, root: &str, out: &Path) {
     }
     w.finish().unwrap();
 }
+
+#[test]
+fn one_deployment_one_meaning_per_capability_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    build_repo(&repo);
+    // A second package redefining host:can with a different shape.
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "fastcan",
+            "version": "2.0.0",
+            "capability": {
+                "host:can": { "scope_type": "interface", "calls": ["can/send"], "shape": 2 }
+            },
+            "guest": { "main": "fastcan", "modules": { "fastcan": "guest/fastcan.dlua" } }
+        }),
+        &[("guest/fastcan.dlua", b"return {}")],
+    );
+    // And a vendored copy of the ORIGINAL contract, byte-identical decl.
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "can-vendored",
+            "version": "0.1.0",
+            "capability": {
+                "host:can": { "scope_type": "interface", "calls": ["can/send", "can/recv"], "shape": 1 }
+            },
+            "guest": { "main": "v", "modules": { "v": "guest/v.dlua" } }
+        }),
+        &[("guest/v.dlua", b"return {}")],
+    );
+    run(dollup().args(["repo", "index"]).arg(&repo));
+
+    let dep = tmp.path().join("dep");
+    run(dollup().arg("--deployment").arg(&dep).arg("init"));
+    let cfg_path = dep.join("dollup.json");
+    let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
+    cfg["sources"] = serde_json::json!([format!("file://{}", repo.display())]);
+    fs::write(&cfg_path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
+
+    // can binds host:can; the identical vendored declaration passes; the
+    // different one is refused naming both definers.
+    run(dollup().arg("--deployment").arg(&dep).args(["add", "can"]));
+    run(dollup()
+        .arg("--deployment")
+        .arg(&dep)
+        .args(["add", "can-vendored"]));
+    let msg = fail(
+        dollup()
+            .arg("--deployment")
+            .arg(&dep)
+            .args(["add", "fastcan"]),
+    );
+    assert!(
+        msg.contains("'fastcan' defines capability 'host:can'"),
+        "{msg}"
+    );
+    assert!(msg.contains("'can' already bound"), "{msg}");
+
+    let lock: serde_json::Value =
+        serde_json::from_slice(&fs::read(dep.join("dollup.lock")).unwrap()).unwrap();
+    assert_eq!(lock["contracts"]["host:can"]["defined_by"], "can");
+    // info shows the contract before anything is fetched or admitted.
+    let out = run(dollup()
+        .arg("--deployment")
+        .arg(&dep)
+        .args(["info", "fastcan"]));
+    assert!(out.contains("defines host:can"), "{out}");
+    assert!(out.contains("shape 2"), "{out}");
+}

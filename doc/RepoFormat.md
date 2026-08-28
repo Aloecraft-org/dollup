@@ -265,12 +265,29 @@ tokio, and each `abi` means exactly this much:
   statically-linked runtime. Two tokios on one machine is sound when the
   boundary is bytes; one address space pretending to share one is not.
 
-High-performance connectors that genuinely want the host's runtime (a
-postgres pool, redis) belong compiled into DRT behind cargo features —
-layer 2, "what this host build offers", is a compile-time fact, and a
-package requiring a connector the build lacks already fails at admission by
-name. Dollup's distribution role for those is the capability contract and
-the guest face, which have no linking problem at all.
+**The compiled-in set is closed, and distributed faces are the primary
+growth path — not the escape hatch.** DRT's identity is a tiny installed
+package; a runtime whose answer to every integration is "recompile with
+another feature" converges on either one fat build or a 2^N feature matrix,
+and both betray it. A connector is compiled in only when its absence would
+make the runtime not-DRT (time, fs, listen, the control plane — plus
+whatever the project explicitly rules core, a decision made per connector
+and out loud, never by drift). Everything else is a distributed face:
+component where it can be, an out-of-process runner where it must be
+native, with the host-side dispatcher gating calls identically for all
+three origins. A package requiring a connector this build does not carry
+still fails at admission by name, whichever lane the connector was meant
+to arrive by.
+
+**One deployment, one meaning per capability name.** Capability names are a
+global namespace with no registrar, so the deployment's lockfile is the
+binding: a contract's identity is the hash of its declaration, and the
+first definer pins `name → contract id`. An identical declaration from
+anywhere else passes (vendored copies hash the same); a different
+declaration under a pinned name is refused naming both definers, never
+merged. `dollup info` prints a package's contracts in full — scope type,
+calls, shape, contract id — before any face is fetched, because the
+contract is the unit of trust review.
 
 **Dollup may ship the distribution side before DRT ships the loading side.**
 Placement is inert, so a wasm component can sit correctly in a code root that

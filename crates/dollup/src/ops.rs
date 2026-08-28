@@ -140,6 +140,33 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
         let source = &opened[source_idx];
         let manifest = admit(source, &name, &version, &entry)?;
 
+        // One deployment, one meaning per capability name: the lock pins
+        // name → contract identity, and a different declaration under a
+        // pinned name is refused naming both definers. Never a merge.
+        for (cap, decl) in &manifest.capability {
+            let id = decl.contract_id();
+            match deployment.lock.contracts.get(cap) {
+                Some(bound) if bound.id != id => bail!(
+                    "'{name}' defines capability '{cap}' with a different contract than \
+                     '{}' already bound in this deployment ({} vs {}) — one deployment, \
+                     one meaning per capability name",
+                    bound.defined_by,
+                    id,
+                    bound.id
+                ),
+                Some(_) => {}
+                None => {
+                    deployment.lock.contracts.insert(
+                        cap.clone(),
+                        dollup_format::lock::LockedContract {
+                            id,
+                            defined_by: name.clone(),
+                        },
+                    );
+                }
+            }
+        }
+
         // Fetch what the gates admit, hash-checking every blob against the
         // manifest and the manifest against the index.
         let mut materialize: BTreeMap<String, Vec<u8>> = BTreeMap::new();

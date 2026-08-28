@@ -210,3 +210,13 @@ impl Manifest {
             .collect()
     }
 }
+
+impl CapabilityDecl {
+    /// The contract's identity: the hash of its canonical JSON (field order
+    /// is the struct's, fixed). Two vendored copies of one contract hash
+    /// identically; any semantic difference — a call added, the shape
+    /// bumped, the scope type changed — is a different contract.
+    pub fn contract_id(&self) -> crate::Hash {
+        crate::hash_bytes(&serde_json::to_vec(self).expect("decl serializes"))
+    }
+}

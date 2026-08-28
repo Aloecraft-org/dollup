@@ -17,6 +17,23 @@ pub struct Lockfile {
     pub packages: BTreeMap<String, LockedPackage>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub snapshots: BTreeMap<String, LockedSnapshot>,
+    /// Capability name → contract identity (the hash of its declaration).
+    /// Capability names are a global namespace and this is the deployment's
+    /// binding: the first definer pins the name, an identical declaration
+    /// from anywhere hashes the same and passes, and a *different*
+    /// declaration under a pinned name is refused by name — one deployment,
+    /// one meaning per capability.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub contracts: BTreeMap<String, LockedContract>,
+}
+
+/// Which declaration a capability name is bound to, and who bound it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LockedContract {
+    /// Hash of the declaration's canonical JSON.
+    pub id: Hash,
+    /// The package that bound it (for naming in a refusal).
+    pub defined_by: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

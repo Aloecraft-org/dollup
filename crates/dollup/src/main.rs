@@ -169,6 +169,37 @@ fn main() -> Result<()> {
                     if let Some(cs) = &e.code_set {
                         println!("  code-set: {cs}");
                     }
+                    // The contract is the unit of trust review: show it in
+                    // full before any host face is fetched or admitted.
+                    let rel = format!("{}/manifest.json", e.path);
+                    if let Some(bytes) = opened.fetched.read(&rel)? {
+                        if let Ok(m) = serde_json::from_slice::<dollup_format::Manifest>(&bytes) {
+                            for (cap, decl) in &m.capability {
+                                println!(
+                                    "  defines {cap} (scope: {}, shape {}, contract {})",
+                                    decl.scope_type,
+                                    decl.shape,
+                                    decl.contract_id()
+                                );
+                                println!("    calls: {}", decl.calls.join(", "));
+                            }
+                            if !m.requires.capabilities.is_empty() {
+                                println!(
+                                    "  requires capabilities: {}",
+                                    m.requires.capabilities.join(", ")
+                                );
+                            }
+                            if !m.requires.connectors.is_empty() {
+                                let list: Vec<String> = m
+                                    .requires
+                                    .connectors
+                                    .iter()
+                                    .map(|(n, v)| format!("{n} {v}"))
+                                    .collect();
+                                println!("  requires connectors: {}", list.join(", "));
+                            }
+                        }
+                    }
                     return Ok(());
                 }
             }

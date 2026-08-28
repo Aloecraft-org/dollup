@@ -54,6 +54,17 @@ chunks at publish and at add, which mitigates by keeping input in the class
 the parser checks. It does not make hostile source safe — the capability
 model does, at run time, to the extent config says so.
 
+## Contract pinning is per-deployment coherence, not global truth
+
+The lockfile binds each capability name to one contract identity, so within
+a deployment a name cannot quietly mean two things. That is the whole
+claim. It does not make a name mean the *right* thing — the first package
+added binds it, and choosing trustworthy sources is still where that trust
+comes from. Two deployments can bind the same name to different contracts
+and both are internally coherent; interoperability between them is a
+publishing discipline (share the interface package), not something dollup
+enforces.
+
 ## A native host face is `apt install`
 
 A wasm host face will run in a sandbox once DRT loads components. A
