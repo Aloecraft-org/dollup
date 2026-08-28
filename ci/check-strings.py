@@ -14,6 +14,12 @@ bad = []
 for path in pathlib.Path("crates").rglob("*.rs"):
     for lineno, line in enumerate(path.read_text().splitlines(), 1):
         for lit in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
+            # A literal that opens with indentation is presentation — an
+            # aligned help column, where a run of spaces is the point. A lost
+            # continuation always begins mid-sentence, so this separates them
+            # without needing a marker on every help line.
+            if lit.startswith("  "):
+                continue
             if re.search(r"\w {3,}\w", lit):
                 bad.append(f"{path}:{lineno}: {lit[:80]}")
 

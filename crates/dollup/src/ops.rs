@@ -103,7 +103,11 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
         None => deployment.config.sources.clone(),
     };
     if entries.is_empty() {
-        bail!("no sources: the source list is empty and the ref names none (an empty list resolves nothing)");
+        bail!(
+            "nothing to install from: this deployment has no package sources.\n\
+             \n  \
+             add one:  dollup source add <url> --key <key>"
+        );
     }
 
     let store = Store::open(&deployment.store_dir())?;

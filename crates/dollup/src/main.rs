@@ -139,14 +139,47 @@ enum RepoVerb {
     },
 }
 
+/// The standard source `dollup init` scaffolds. SPEC.md §1 is precise about
+/// what this is and is not: the binary knows no URLs *at resolve time* — this
+/// is a line written into a file the operator owns, which they can delete or
+/// replace, and nothing resurrects it.
+const STD_REPO_URL: &str = "https://dollup.aloecraft.org/std-repo/";
+
+/// `None` until the standard repo's key is minted (std-repo/README.md).
+/// Filling this in is what turns a first run into two commands with nothing
+/// to read first, so it is worth doing the day the key exists.
+const STD_REPO_KEY: Option<&str> = None;
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let dir = cli.deployment.unwrap_or_else(|| PathBuf::from("."));
     match cli.verb {
         Verb::Init => {
-            let d = Deployment::init(&dir)?;
-            println!("deployment scaffolded at {}", d.dir.display());
-            println!("sources: none — add them to dollup.json (an empty list resolves nothing)");
+            let mut d = Deployment::init(&dir)?;
+            // Someone who just typed `dollup init` wants to install
+            // something, not to learn what a source is. Where the standard
+            // key exists, scaffold it in and hand them a command that works;
+            // where it does not, still hand them commands rather than a file
+            // to go edit.
+            println!("Created a deployment in {}", d.dir.display());
+            println!();
+            match STD_REPO_KEY {
+                Some(key) => {
+                    d.config.sources.push(dollup_format::SourceEntry::Signed {
+                        url: STD_REPO_URL.into(),
+                        keys: vec![key.into()],
+                    });
+                    d.save()?;
+                    println!("  dollup add hello     install a program");
+                    println!("  dollup ls            see what is installed");
+                }
+                None => {
+                    println!("Add somewhere to install from, then install:");
+                    println!();
+                    println!("  dollup source add <url> --key <key>");
+                    println!("  dollup add <name>");
+                }
+            }
         }
         Verb::Add {
             r#ref,
