@@ -16,3 +16,8 @@ jobs:
       # The documentation stance is CI-checked for presence, like DRT's
       # GUARANTEES.md (SPEC.md §11).
       - run: test -s THREAT-NOTES.md
+      # The standard repo must always be publishable: index re-hashes every
+      # package independently, so a hand-edited file or a stale seal fails
+      # here rather than at the mirror.
+      - run: cargo run -q -p dollup -- repo index std-repo
+      - run: git diff --exit-code std-repo/index.json
