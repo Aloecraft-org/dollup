@@ -246,6 +246,32 @@ takes the same asymmetry §7 takes with snapshots — one mechanism, second use:
   budget cannot bound it, and dollup's hash check proves only that the bytes
   match the index — never that anyone vouched for them.
 
+**No host face ever shares Rust internals with DRT — the linking reality.**
+Rust has no stable ABI: a compiled artifact can only soundly expose a C-ABI
+or bytes-level surface, and passing any Rust type (a runtime handle, a
+`Waker`, a socket) across a dynamic boundary is defined only when both sides
+came from one build. So a distributed connector never borrows the host's
+tokio, and each `abi` means exactly this much:
+
+- `component` — sharing dissolves rather than being solved: the component
+  *cannot* link host internals, and imports what it needs (a byte stream, a
+  clock) from host-provided interfaces the host implements once, on its own
+  runtime, behind capability gating. The cost stated plainly: async-native
+  crates (tokio-postgres and kin) do not compile to this target; a component
+  connector is written sans-io against the host's interfaces, not ported.
+- `native` — bytes dollup places, gated loudly; **never a `dlopen` into
+  DRT.** What runs one is outside DRT's loader: a separate OS process
+  speaking framed msgpack under config admission, carrying its own
+  statically-linked runtime. Two tokios on one machine is sound when the
+  boundary is bytes; one address space pretending to share one is not.
+
+High-performance connectors that genuinely want the host's runtime (a
+postgres pool, redis) belong compiled into DRT behind cargo features —
+layer 2, "what this host build offers", is a compile-time fact, and a
+package requiring a connector the build lacks already fails at admission by
+name. Dollup's distribution role for those is the capability contract and
+the guest face, which have no linking problem at all.
+
 **Dollup may ship the distribution side before DRT ships the loading side.**
 Placement is inert, so a wasm component can sit correctly in a code root that
 no runtime can yet load. This is the doctrine paying for the parallel
