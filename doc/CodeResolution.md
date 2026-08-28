@@ -269,6 +269,47 @@ owns.
 Phase 1 is the only one dollup is waiting on, and it can land after DRT's
 first core implementation is done rather than inside it.
 
+## 10a. Dollup never writes DRT's config, in either dialect
+
+Raised by the DRT side and worth settling here, because the answer is a
+boundary rather than a mechanism.
+
+DRT has two config dialects and they treat an unknown key oppositely. The
+JSON root config is serde with no `deny_unknown_fields`, so an unknown key
+is **silently ignored**. `.host.lua` **errors and names the key**
+(`crates/drt/src/config.rs:214`, pinned by `tests/host_lua.rs:125`) — the C
+loader's promise kept, on purpose, because a typo about to become a silent
+default is the failure that loader exists to catch.
+
+That raises an obvious worry: if dollup wrote `code_root` into a `.host.lua`
+that an older DRT then read, the deployment would fail at config parse —
+a crash-loop under a supervisor. **It cannot happen, because dollup does not
+write DRT's config at all.** SPEC.md §1 is "install is inert; config is
+authority", and §3 already says dollup never writes or manages the unit file
+that runs the runtime; the root config is the same kind of object and the
+same rule covers it. Dollup writes exactly three things: its own
+`dollup.json`, `dollup.lock`, and the contents of the code root. The line
+naming that code root is the operator's, written once; `dollup init` prints
+it to paste and stops there.
+
+So: **do not loosen `.host.lua`.** No reserved namespace, no tolerated
+prefix. The strict dialect is correct, and C-host parity is a better reason
+to keep it than anything here is to weaken it.
+
+What is left is only the ordinary case of using a new key on an old binary,
+and the strict dialect handles it *better* than the permissive one: an
+operator who hand-writes `code_root` on an older DRT is told
+`unknown key 'code_root'` and knows immediately what to upgrade. The JSON
+path silently drops it, starts, serves nothing, and leaves someone debugging
+why their program is not found. If either dialect deserves attention later
+it is that one — and widening a permissive parser is safe whenever, so it is
+not release-timed.
+
+This is also why §8's flag and env var are load-bearing rather than
+convenience: `--code-root` and `DRT_CODE_ROOT` let a deployment name a code
+root **without editing a `.host.lua` at all**, which keeps the strict
+dialect out of the common path entirely.
+
 ## 11. Two connector-side additions, ordered by risk
 
 Dollup's spec has since settled that a package may carry a **capability
