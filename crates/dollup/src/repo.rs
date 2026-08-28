@@ -95,6 +95,66 @@ pub fn index(repo: &Path) -> Result<RepoIndex> {
     Ok(out)
 }
 
+/// `dollup repo seal <package-dir>`: the authoring tool. Walk the package,
+/// hash every file, write the `files` map into its manifest, and validate
+/// the result. Publishing without this means hand-computing SHA-256 per
+/// file; verification never trusts it — `index` re-hashes independently, so
+/// a stale seal is caught rather than believed.
+///
+/// Everything present is included, because `files` means "what this package
+/// contains" and a file omitted from identity is a file nobody verifies.
+/// Editor debris is skipped by name, and the full list is printed so the
+/// author sees exactly what they are about to publish.
+pub fn seal(pkg_dir: &Path) -> Result<Vec<String>> {
+    let manifest_path = pkg_dir.join("manifest.json");
+    let mut manifest: Manifest = serde_json::from_slice(
+        &fs::read(&manifest_path)
+            .with_context(|| format!("reading {}", manifest_path.display()))?,
+    )
+    .with_context(|| format!("{} does not parse", manifest_path.display()))?;
+
+    let mut files = std::collections::BTreeMap::new();
+    let mut report = vec![];
+    let mut stack = vec![pkg_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir)? {
+            let path = entry?.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            if name.starts_with('.') || name.ends_with('~') || name.ends_with(".tmp") {
+                continue;
+            }
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let rel = path
+                .strip_prefix(pkg_dir)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel == "manifest.json" {
+                continue;
+            }
+            let bytes = fs::read(&path)?;
+            report.push(format!("  {rel} ({} bytes)", bytes.len()));
+            files.insert(rel, hash_bytes(&bytes));
+        }
+    }
+    report.sort();
+    manifest.files = files;
+    manifest
+        .check()
+        .with_context(|| format!("{} refused after sealing", manifest_path.display()))?;
+
+    let mut bytes = serde_json::to_vec_pretty(&manifest)?;
+    bytes.push(b'\n');
+    fs::write(&manifest_path, bytes)?;
+    report.insert(
+        0,
+        format!("sealed {} {}", manifest.name, manifest.version),
+    );
+    Ok(report)
+}
+
 /// `dollup repo sign <dir> --key-file <path>`: sign the exact index bytes.
 pub fn sign_index(repo: &Path, key_file: &Path) -> Result<()> {
     let key =

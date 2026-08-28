@@ -1,1 +1,13 @@
 /target
+
+# Publishing staging tree (std-repo/publish.sh)
+/.publish
+
+# The blob projection is generated from the package tree by publish.sh; the
+# tree is canonical, so committing blobs would double the repo to store a
+# second copy of every byte.
+/std-repo/blobs/
+
+# Signed at publish time with a key that is not in this repository. Committed
+# only once the real std-repo key exists — see std-repo/README.md.
+/std-repo/index.json.sig

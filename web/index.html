@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dollup — distribution for Diluvium and DRT</title>
+<meta name="description" content="A fetcher and resolver over a content-addressed store. Install is inert; config is authority.">
+<style>
+:root {
+  --bg: #fbfaf8; --fg: #1a1a1a; --dim: #5c5a55; --line: #e2ded6;
+  --card: #ffffff; --accent: #7a4b2a; --code-bg: #f4f1ea;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161513; --fg: #ece8e1; --dim: #9c968a; --line: #2e2c28;
+    --card: #1d1c19; --accent: #d79b6c; --code-bg: #211f1c;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: var(--sans); line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 46rem; margin: 0 auto; padding: 0 1.5rem; }
+header { padding: 4.5rem 0 2.5rem; }
+.mark {
+  font-family: var(--mono); font-size: 2.6rem; font-weight: 600;
+  letter-spacing: -0.02em; margin: 0;
+}
+.mark::before { content: "$ "; color: var(--dim); font-weight: 400; }
+.tag { font-size: 1.15rem; color: var(--dim); margin: 0.6rem 0 0; max-width: 34rem; }
+.status {
+  display: inline-block; margin-top: 1.5rem; padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line); border-radius: 999px;
+  font-family: var(--mono); font-size: 0.78rem; color: var(--dim);
+}
+section { padding: 2rem 0; border-top: 1px solid var(--line); }
+h2 { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.09em;
+     color: var(--dim); font-weight: 600; margin: 0 0 1rem; }
+p { margin: 0 0 1rem; }
+p:last-child { margin-bottom: 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 1rem 1.1rem; overflow-x: auto; margin: 0 0 1rem;
+  font-family: var(--mono); font-size: 0.86rem; line-height: 1.7;
+}
+pre .c { color: var(--dim); }
+code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg);
+       padding: 0.1em 0.35em; border-radius: 4px; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.key {
+  font-family: var(--mono); font-size: 0.8rem; word-break: break-all;
+  background: var(--code-bg); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); border-radius: 6px; padding: 0.7rem 0.9rem;
+}
+.note { font-size: 0.9rem; color: var(--dim); }
+table { width: 100%; border-collapse: collapse; font-size: 0.94rem; }
+th { text-align: left; font-weight: 600; font-size: 0.82rem; color: var(--dim);
+     padding: 0 0.8rem 0.5rem 0; border-bottom: 1px solid var(--line); }
+td { padding: 0.6rem 0.8rem 0.6rem 0; border-bottom: 1px solid var(--line);
+     vertical-align: top; }
+td:first-child { font-family: var(--mono); white-space: nowrap; }
+td .v { color: var(--dim); font-size: 0.85em; }
+footer { padding: 2.5rem 0 4rem; border-top: 1px solid var(--line);
+         font-size: 0.9rem; color: var(--dim); }
+footer a { margin-right: 1.2rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1 class="mark">dollup</h1>
+  <p class="tag">Distribution for <a href="https://github.com/Aloecraft-org/diluvium">Diluvium</a>
+  programs and <a href="https://github.com/Aloecraft-org/diluvium-drt">DRT</a> capabilities.
+  A fetcher and resolver over a content-addressed store.</p>
+  <span class="status">pre-release · the format is settling</span>
+</header>
+
+<section>
+  <h2>What it is</h2>
+  <p>Not a package manager. <strong>Install is inert; config is authority.</strong>
+  Fetching an artifact confers nothing — a program runs only when your root
+  config names it and you supply the scopes. Dollup never grants, never runs,
+  and never speaks the instance ABI. Its whole job is to put the right bytes
+  in a directory the runtime reads.</p>
+  <p>Manifests are declarative and can express no behaviour, so there is no
+  install-time code to audit. Identity is the content hash, which is why the
+  same package fetched from this mirror, from a git remote, or from a zipball
+  is one artifact with one identity — mirrors and air-gapped copies are free.</p>
+</section>
+
+<section>
+  <h2>The standard repo</h2>
+  <pre><code><span class="c"># a deployment is a directory</span>
+dollup init
+dollup source add https://dollup.aloecraft.org/std-repo/ \
+    --key __DOLLUP_STD_PUBKEY__
+dollup add hello</code></pre>
+  <p>That fetches, verifies, locks and materialises — and stops. Point the
+  runtime at the deployment to actually run anything.</p>
+</section>
+
+<section>
+  <h2>Verifying this repo</h2>
+  <p>The repo carries a detached signature over its index, and every artifact
+  hashes into that index — so one signature covers the repo, and it travels
+  in the tree rather than in a transport, which is why it verifies identically
+  over HTTPS, git, or a copy on a USB stick.</p>
+  <div class="key">__DOLLUP_STD_PUBKEY__</div>
+  <p class="note" style="margin-top:1rem">Pin it in your source list, where
+  it is an ordinary line in a file you own. A verified index means <em>a
+  holder of this key signed exactly these bytes</em> — not that they are
+  current: dollup checks authenticity, not freshness, and says so in its
+  <a href="https://github.com/Aloecraft-org/dollup/blob/main/THREAT-NOTES.md">threat
+  notes</a> rather than implying more. You are trusting this page over TLS
+  for the key's first delivery; that is the conventional bootstrap and it is
+  worth knowing you made it.</p>
+</section>
+
+<section>
+  <h2>Published packages</h2>
+  <table><thead><tr><th>package</th><th>what</th></tr></thead>
+  <tbody id="pkgs"><tr><td colspan="2" class="note">Loading from
+  <code>/std-repo/index.json</code>…</td></tr></tbody></table>
+  <p class="note" style="margin-top:1rem">The index is a plain JSON file. Read
+  it yourself: <a href="/std-repo/index.json">/std-repo/index.json</a>.</p>
+</section>
+
+<footer>
+  <a href="https://github.com/Aloecraft-org/dollup">Source</a>
+  <a href="https://github.com/Aloecraft-org/dollup/blob/main/SPEC.md">Spec</a>
+  <a href="https://github.com/Aloecraft-org/dollup/blob/main/doc/RepoFormat.md">Repo format</a>
+  <a href="https://github.com/Aloecraft-org/dollup/blob/main/THREAT-NOTES.md">Threat notes</a>
+  <p style="margin-top:1.5rem">Apache-2.0 · <a href="https://aloecraft.org">Aloecraft</a></p>
+</footer>
+
+</div>
+<script>
+// The package table is read from the same index dollup reads. No build step,
+// no generated HTML to drift: if this list is wrong, the repo is wrong.
+(async function () {
+  var body = document.getElementById("pkgs");
+  function row(cells, cls) {
+    var tr = document.createElement("tr");
+    cells.forEach(function (text, i) {
+      var td = document.createElement("td");
+      if (cls && i === cells.length - 1) td.className = cls;
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+    return tr;
+  }
+  try {
+    var res = await fetch("/std-repo/index.json", { cache: "no-cache" });
+    if (!res.ok) throw new Error(res.status);
+    var index = await res.json();
+    var names = Object.keys(index.packages || {}).sort();
+    body.textContent = "";
+    if (!names.length) {
+      body.appendChild(row(["", "No packages published yet."], "note"));
+      return;
+    }
+    names.forEach(function (name) {
+      var versions = Object.keys(index.packages[name].versions || {}).sort();
+      var latest = versions[versions.length - 1] || "?";
+      var entry = index.packages[name].versions[latest] || {};
+      var faces = (entry.faces || []).join(", ") || "—";
+      var tr = row([name, ""]);
+      var td = tr.children[1];
+      td.textContent = faces + " ";
+      var v = document.createElement("span");
+      v.className = "v";
+      v.textContent = "· " + latest;
+      td.appendChild(v);
+      body.appendChild(tr);
+    });
+  } catch (e) {
+    body.textContent = "";
+    body.appendChild(row(["", "Index unavailable — serve this page from the site to see it."], "note"));
+  }
+})();
+</script>
+</body>
+</html>

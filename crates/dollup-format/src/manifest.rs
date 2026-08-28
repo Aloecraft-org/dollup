@@ -28,7 +28,10 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Requires::is_empty")]
     pub requires: Requires,
     /// Path → hash: the identity input. Every file the package ships,
-    /// including host faces and assets.
+    /// including host faces and assets. Written by `dollup repo seal`; an
+    /// unsealed manifest has none, and `check` refuses one whose faces name
+    /// files it does not list.
+    #[serde(default)]
     pub files: BTreeMap<String, Hash>,
 }
 

@@ -1,0 +1,23 @@
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "guest": {
+    "main": "hello",
+    "modules": {
+      "hello": "guest/hello.dlua"
+    },
+    "source_only": true
+  },
+  "requires": {
+    "capabilities": [
+      "host:time",
+      "host:fs/read"
+    ],
+    "packages": {
+      "hostcall": "^0.1"
+    }
+  },
+  "files": {
+    "guest/hello.dlua": "sha256:20b9bdd09ea7a3912690c9d36b036bf92c7877d511a7453b29421c5d290277d0"
+  }
+}

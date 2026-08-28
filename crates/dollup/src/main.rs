@@ -86,13 +86,37 @@ enum Verb {
     /// Pull a snapshot: manifest, blob, and the pinned code-set — fetched
     /// by identity from the sources if absent. Restore stays DRT's verb.
     Pull { remote: String, name: String },
-    /// Publisher-side verbs: index, sign, blobs, keygen.
+    /// Publisher-side verbs: seal, index, sign, blobs, keygen.
     #[command(subcommand)]
     Repo(RepoVerb),
+    /// The deployment's source list.
+    #[command(subcommand)]
+    Source(SourceVerb),
+}
+
+#[derive(Subcommand)]
+enum SourceVerb {
+    /// Add a source, optionally pinning the key that must sign its index.
+    Add {
+        url: String,
+        /// The publisher's public key, `ed25519:<base64>`.
+        #[arg(long, conflicts_with = "key_file")]
+        key: Option<String>,
+        /// Read the public key from a file (e.g. a `.pub` from keygen).
+        #[arg(long)]
+        key_file: Option<PathBuf>,
+    },
+    /// List the sources, and whether each is signed.
+    Ls,
+    /// Remove a source by url.
+    Rm { url: String },
 }
 
 #[derive(Subcommand)]
 enum RepoVerb {
+    /// Hash a package's files into its manifest and validate it. Run this
+    /// after editing a package, before `index`.
+    Seal { dir: PathBuf },
     /// Scan packages/, validate, write index.json (dropping any stale
     /// signature).
     Index { dir: PathBuf },
@@ -255,7 +279,58 @@ fn main() -> Result<()> {
                 println!("{line}");
             }
         }
+        Verb::Source(v) => {
+            let mut d = Deployment::open(&dir)?;
+            match v {
+                SourceVerb::Add { url, key, key_file } => {
+                    dollup_format::source::Scheme::of(&url)?;
+                    if d.config.sources.iter().any(|e| e.url() == url) {
+                        anyhow::bail!("{url} is already a source");
+                    }
+                    let key = match (key, key_file) {
+                        (Some(k), _) => Some(k),
+                        (None, Some(path)) => Some(std::fs::read_to_string(&path)?.trim().to_string()),
+                        (None, None) => None,
+                    };
+                    let entry = match key {
+                        Some(k) => dollup_format::SourceEntry::Signed { url: url.clone(), keys: vec![k] },
+                        None => dollup_format::SourceEntry::Url(url.clone()),
+                    };
+                    let signed = !entry.keys().is_empty();
+                    d.config.sources.push(entry);
+                    d.save()?;
+                    println!("added {url} ({})", if signed { "signed" } else { "unsigned" });
+                    if !signed {
+                        eprintln!(
+                            "note: unsigned — with require_signatures set, a network                              source without a pinned key is refused at resolve time"
+                        );
+                    }
+                }
+                SourceVerb::Ls => {
+                    for e in &d.config.sources {
+                        match e.keys() {
+                            [] => println!("{}  (unsigned)", e.url()),
+                            keys => println!("{}  {}", e.url(), keys.join(" ")),
+                        }
+                    }
+                }
+                SourceVerb::Rm { url } => {
+                    let before = d.config.sources.len();
+                    d.config.sources.retain(|e| e.url() != url);
+                    if d.config.sources.len() == before {
+                        anyhow::bail!("{url} is not a source");
+                    }
+                    d.save()?;
+                    println!("removed {url}");
+                }
+            }
+        }
         Verb::Repo(v) => match v {
+            RepoVerb::Seal { dir } => {
+                for line in repo::seal(&dir)? {
+                    println!("{line}");
+                }
+            }
             RepoVerb::Index { dir } => {
                 let idx = repo::index(&dir)?;
                 println!("indexed {} package(s)", idx.packages.len());
