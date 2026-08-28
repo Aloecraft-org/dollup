@@ -19,6 +19,9 @@ jobs:
       # Refusal messages are what people read when dollup says no; a lost
       # line-continuation turns one into a wall of spaces.
       - run: python3 ci/check-strings.py
+      # The landing page quietly stops working rather than looking broken
+      # when it loses the pubkey token or the live index fetch.
+      - run: python3 web/check.py
       # The standard repo must always be publishable: index re-hashes every
       # package independently, so a hand-edited file or a stale seal fails
       # here rather than at the mirror.
