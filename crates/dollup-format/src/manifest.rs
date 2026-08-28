@@ -57,8 +57,13 @@ pub struct CapabilityDecl {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Guest {
-    /// The entry module. Must be a key of `modules`.
-    pub main: String,
+    /// The entry module, when this package is meant to be *run*. Absent
+    /// means a library: modules another package requires, with no entry of
+    /// its own. Users will read a package with dependencies and a version as
+    /// a library whatever we call it, so the format says which it is rather
+    /// than making every package claim an entry point it may not have.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main: Option<String>,
     /// Module name → path within the package.
     pub modules: BTreeMap<String, String>,
     #[serde(default = "default_true")]
@@ -153,8 +158,10 @@ impl Manifest {
     /// at publish and at add — failures are admission failures, by name.
     pub fn check(&self) -> Result<(), ManifestError> {
         if let Some(guest) = &self.guest {
-            if !guest.modules.contains_key(&guest.main) {
-                return Err(ManifestError::MainNotAModule(guest.main.clone()));
+            if let Some(main) = &guest.main {
+                if !guest.modules.contains_key(main) {
+                    return Err(ManifestError::MainNotAModule(main.clone()));
+                }
             }
             for (module, path) in &guest.modules {
                 if !self.files.contains_key(path) {

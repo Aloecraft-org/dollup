@@ -222,6 +222,14 @@ fn main() -> Result<()> {
                 if let Some((v, e)) = opened.index.select(&r.name, r.version.as_ref()) {
                     println!("{} {v} ← {}", r.name, entry.url());
                     println!("  faces: {:?}  targets: {:?}", e.faces, e.targets);
+                    println!(
+                        "  {}",
+                        match &e.code_set {
+                            Some(_) if e.runnable => "a program: dollup add it, then run it",
+                            Some(_) => "a library: other packages require it",
+                            None => "no guest code",
+                        }
+                    );
                     println!("  package: {}", e.package_id);
                     if let Some(cs) = &e.code_set {
                         println!("  code-set: {cs}");

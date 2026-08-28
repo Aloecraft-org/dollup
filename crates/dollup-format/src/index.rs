@@ -49,6 +49,11 @@ pub struct IndexEntry {
     /// Which faces are present, so `ls`/`info` answer without a fetch and a
     /// host face can be refused before transfer, not after.
     pub faces: Vec<Face>,
+    /// Has an entry module: something to run rather than something to
+    /// require. In the index because "is this a program or a library" is the
+    /// first thing anyone asks of a listing.
+    #[serde(default)]
+    pub runnable: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<String>,
 }

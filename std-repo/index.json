@@ -11,7 +11,8 @@
           "code_set": "sha256:71c15e2af3ee44139de7804c6e15b875f1ba85d9fe8c0606794ac79e704b2a92",
           "faces": [
             "guest"
-          ]
+          ],
+          "runnable": true
         }
       }
     },
@@ -19,12 +20,13 @@
       "versions": {
         "0.1.0": {
           "path": "packages/hostcall/0.1.0",
-          "manifest": "sha256:ead343d5bc5e0a14d8596260a7a14d2dde1849716e5f5acf05f93b8d23216d55",
-          "package_id": "sha256:d45083b9941373e50ff4fba41d2151413d99fdf8dcc7aae3755365ff75932eb0",
-          "code_set": "sha256:d8c0f7a65123ac2c0fae59947bf4b31562ef5069876283a3ab9e886cb59fcdd2",
+          "manifest": "sha256:2c6dfc5589e20d058173c0ed3d717a103f0461a711c8b1ecf6d293a7cb421155",
+          "package_id": "sha256:2fd9c7e89013449e9cc351bb9a887c56b0cec4f1511eee2c7414446ada91b515",
+          "code_set": "sha256:852b93316fd2caba11b0c6dba3c07a60163439cbd317cbc2ea41a6dcd353bbbe",
           "faces": [
             "guest"
-          ]
+          ],
+          "runnable": false
         }
       }
     }

@@ -63,8 +63,11 @@ pub fn package_identity(manifest_bytes: &[u8], files: &BTreeMap<String, Hash>) -
 /// Code-set identity: the guest face alone — entry module name plus the
 /// guest files. The `main` line is part of the identity because renaming the
 /// entry changes what runs without changing any file.
-pub fn code_set_identity(main: &str, guest_files: &BTreeMap<String, Hash>) -> Hash {
-    let mut doc = format!("main {main}\n");
+pub fn code_set_identity(main: Option<&str>, guest_files: &BTreeMap<String, Hash>) -> Hash {
+    // `-` for a library, so the document has one shape and a library can
+    // never collide with a runnable package that happens to ship the same
+    // files under a different entry.
+    let mut doc = format!("main {}\n", main.unwrap_or("-"));
     for (path, hash) in guest_files {
         doc.push_str(&hash.0);
         doc.push_str("  ");
@@ -101,22 +104,29 @@ mod tests {
         all.insert("host/can.wasm".into(), hash_bytes(b"v1"));
         let manifest = br#"{"name":"can"}"#;
         let pkg1 = package_identity(manifest, &all);
-        let code1 = code_set_identity("can", &guest);
+        let code1 = code_set_identity(Some("can"), &guest);
 
         all.insert("host/can.wasm".into(), hash_bytes(b"v2 - connector fix"));
         let pkg2 = package_identity(manifest, &all);
-        let code2 = code_set_identity("can", &guest);
+        let code2 = code_set_identity(Some("can"), &guest);
 
         assert_ne!(pkg1, pkg2, "the lockfile sees the fix");
         assert_eq!(code1, code2, "the sleeping agent's pin does not move");
     }
 
     #[test]
-    fn renaming_the_entry_module_moves_the_code_set() {
+    fn the_entry_module_is_part_of_the_code_set() {
         let guest = set(&[("guest/a.dlua", "x"), ("guest/b.dlua", "y")]);
         assert_ne!(
-            code_set_identity("a", &guest),
-            code_set_identity("b", &guest)
+            code_set_identity(Some("a"), &guest),
+            code_set_identity(Some("b"), &guest)
+        );
+        // A library and a runnable package shipping identical files are not
+        // the same code-set — what an instance is pinned to includes what it
+        // was told to start.
+        assert_ne!(
+            code_set_identity(None, &guest),
+            code_set_identity(Some("a"), &guest)
         );
     }
 }

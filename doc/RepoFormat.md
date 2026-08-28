@@ -201,6 +201,14 @@ one envelope, which is §2's whole argument, so the faces stay together.
 
 Notes where the shape was chosen against an obvious alternative:
 
+- **`guest.main` is optional, and its absence is the meaning.** A package
+  with an entry module is something to *run*; one without is a library other
+  packages require. This exists because users will read anything with a
+  name, a version and dependencies as a library whatever it is called — so
+  rather than argue with that reading, the format states which a package is,
+  the index carries it, and `ls`/`info` say it in words. A required `main`
+  forced every library to claim an entry point it did not have, which is a
+  lie the tooling would then repeat.
 - **`source_only` moved under `guest`.** It means "no precompiled diluvium
   chunks", which is a statement about the guest face only — a host face is
   binary by definition. Leaving it at top level would have made the two faces

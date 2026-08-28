@@ -309,7 +309,7 @@ fn admit(
         bail!("{name} {version}: package identity does not recompute — refusing");
     }
     if let Some(guest) = &manifest.guest {
-        let code_set = code_set_identity(&guest.main, &manifest.guest_files());
+        let code_set = code_set_identity(guest.main.as_deref(), &manifest.guest_files());
         if entry.code_set.as_ref() != Some(&code_set) {
             bail!("{name} {version}: code-set identity does not recompute — refusing");
         }
