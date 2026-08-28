@@ -1,0 +1,58 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1880
+    },
+    {
+      "file": "MainDark.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 1880
+    },
+    {
+      "file": "Mobile.dc.html",
+      "x": 3120,
+      "y": 0,
+      "w": 390,
+      "h": 2660
+    },
+    {
+      "file": "DirectionB.dc.html",
+      "x": 0,
+      "y": 2820,
+      "w": 1440,
+      "h": 2000
+    },
+    {
+      "file": "DirectionC.dc.html",
+      "x": 1560,
+      "y": 2820,
+      "w": 1440,
+      "h": 1640
+    }
+  ],
+  "annotations": [
+    {
+      "id": "lead",
+      "x": 0,
+      "y": -150,
+      "w": 460,
+      "text": "Main \u2014 the leading direction.\nDark hero, the install commands on a card straddling the fold so they read as the page's first object. Ripples from the mark carry the brand.\n\nMainDark is the same page at the dark end of prefers-color-scheme; Mobile is Main at 390."
+    },
+    {
+      "id": "alts",
+      "x": 0,
+      "y": 2660,
+      "w": 460,
+      "text": "Two alternates, varying hero / commands / key panel.\n\nB \u2014 light split hero with the mark at size, install as three numbered steps that each say why.\nC \u2014 one dark deck, terminal-forward, hairline rules, key panel paired with its caveat."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
