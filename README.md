@@ -27,6 +27,14 @@ map; [`THREAT-NOTES.md`](THREAT-NOTES.md) says what is and is not checked.
 
 ## A five-minute life
 
+`dollup` is not on `PATH` in a fresh checkout. Either prefix the commands
+below with `./target/release/`, or put it on `PATH` once:
+
+```sh
+cargo build --release && export PATH="$PWD/target/release:$PATH"
+# or, permanently:  cargo install --path crates/dollup
+```
+
 ```sh
 # Publisher side: a repo is a directory of packages.
 dollup repo index ./my-repo          # scan, validate, write index.json

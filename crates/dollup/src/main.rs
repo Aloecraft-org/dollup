@@ -289,20 +289,29 @@ fn main() -> Result<()> {
                     }
                     let key = match (key, key_file) {
                         (Some(k), _) => Some(k),
-                        (None, Some(path)) => Some(std::fs::read_to_string(&path)?.trim().to_string()),
+                        (None, Some(path)) => {
+                            Some(std::fs::read_to_string(&path)?.trim().to_string())
+                        }
                         (None, None) => None,
                     };
                     let entry = match key {
-                        Some(k) => dollup_format::SourceEntry::Signed { url: url.clone(), keys: vec![k] },
+                        Some(k) => dollup_format::SourceEntry::Signed {
+                            url: url.clone(),
+                            keys: vec![k],
+                        },
                         None => dollup_format::SourceEntry::Url(url.clone()),
                     };
                     let signed = !entry.keys().is_empty();
                     d.config.sources.push(entry);
                     d.save()?;
-                    println!("added {url} ({})", if signed { "signed" } else { "unsigned" });
+                    println!(
+                        "added {url} ({})",
+                        if signed { "signed" } else { "unsigned" }
+                    );
                     if !signed {
                         eprintln!(
-                            "note: unsigned — with require_signatures set, a network                              source without a pinned key is refused at resolve time"
+                            "note: unsigned — with require_signatures set, a network source \
+                             without a pinned key is refused at resolve time"
                         );
                     }
                 }
@@ -346,13 +355,25 @@ fn main() -> Result<()> {
                 let (private, public) = dollup_format::sign::keygen();
                 match out {
                     Some(prefix) => {
+                        use anyhow::Context;
                         use std::io::Write;
                         use std::os::unix::fs::OpenOptionsExt;
+                        if let Some(parent) = prefix.parent().filter(|p| !p.as_os_str().is_empty())
+                        {
+                            std::fs::create_dir_all(parent)
+                                .with_context(|| format!("creating {}", parent.display()))?;
+                        }
                         let mut f = std::fs::OpenOptions::new()
                             .write(true)
                             .create_new(true)
                             .mode(0o600)
-                            .open(&prefix)?;
+                            .open(&prefix)
+                            .with_context(|| {
+                                format!(
+                                    "creating {} — a key already there is never overwritten",
+                                    prefix.display()
+                                )
+                            })?;
                         writeln!(f, "{private}")?;
                         let pub_path = prefix.with_extension("pub");
                         std::fs::write(&pub_path, format!("{public}\n"))?;

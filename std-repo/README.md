@@ -13,8 +13,14 @@ private key **is not in this repository and must never be** — a key in a git
 repo is not a key.
 
 ```sh
-dollup repo keygen --out ~/.dollup/std-repo.key   # 0600, refuses to clobber
+cargo build --release
+./target/release/dollup repo keygen --out ~/.dollup/std-repo.key
 ```
+
+(0600, creates the directory, and refuses to overwrite an existing key.
+`dollup` is not on `PATH` in a fresh checkout — either call it by path as
+above, or `export PATH="$PWD/target/release:$PATH"` once per shell, or
+`cargo install --path crates/dollup` to put it in `~/.cargo/bin`.)
 
 That writes `~/.dollup/std-repo.key` (private) and `…key.pub` (public), and
 prints only the public line. Back the private half up somewhere that is not
@@ -34,6 +40,9 @@ cargo build --release
 ./std-repo/publish.sh --key-file ~/.dollup/std-repo.key --deploy   # and rsync
 ```
 
+`publish.sh` finds the binary itself (`target/release/dollup`, or
+`DOLLUP_BIN`), so it needs no `PATH` setup.
+
 The script seals every package, indexes, signs, projects blobs, assembles
 the site into `.publish/`, stamps the real public key into the page, and
 then **resolves the staged repo in a throwaway deployment** before it will
@@ -52,7 +61,7 @@ packages/<name>/<version>/
 Write the manifest without a `files` map, then:
 
 ```sh
-dollup repo seal packages/<name>/<version>
+./target/release/dollup repo seal packages/<name>/<version>
 ```
 
 Seal walks the directory, hashes everything, writes the `files` map, and

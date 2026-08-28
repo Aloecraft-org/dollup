@@ -28,7 +28,11 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$key_file" ] || { echo "need --key-file (or DOLLUP_KEY_FILE)" >&2; exit 2; }
-[ -r "$key_file" ] || { echo "cannot read key file: $key_file" >&2; exit 2; }
+[ -r "$key_file" ] || {
+    echo "cannot read key file: $key_file" >&2
+    echo "  mint one:  $dollup repo keygen --out $key_file" >&2
+    exit 2
+}
 # keygen --out writes `<prefix without extension>.pub`; a prefix with no
 # extension gets `<prefix>.pub`. Accept either, and say which is missing.
 pub_file="${key_file%.*}.pub"

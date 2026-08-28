@@ -119,7 +119,11 @@ pub fn seal(pkg_dir: &Path) -> Result<Vec<String>> {
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir)? {
             let path = entry?.path();
-            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
             if name.starts_with('.') || name.ends_with('~') || name.ends_with(".tmp") {
                 continue;
             }
@@ -148,10 +152,7 @@ pub fn seal(pkg_dir: &Path) -> Result<Vec<String>> {
     let mut bytes = serde_json::to_vec_pretty(&manifest)?;
     bytes.push(b'\n');
     fs::write(&manifest_path, bytes)?;
-    report.insert(
-        0,
-        format!("sealed {} {}", manifest.name, manifest.version),
-    );
+    report.insert(0, format!("sealed {} {}", manifest.name, manifest.version));
     Ok(report)
 }
 
