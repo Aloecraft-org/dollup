@@ -301,6 +301,8 @@ dependencies = [
  "clap",
  "dollup-format",
  "hex",
+ "rustls",
+ "rustls-native-certs",
  "semver",
  "serde",
  "serde_json",
@@ -308,6 +310,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "ureq",
+ "webpki-roots 0.26.11",
  "zip",
 ]
 
@@ -1047,7 +1050,6 @@ dependencies = [
  "log",
  "once_cell",
  "rustls",
- "rustls-native-certs",
  "rustls-pki-types",
  "url",
  "webpki-roots 0.26.11",

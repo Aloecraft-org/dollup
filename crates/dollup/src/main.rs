@@ -4,6 +4,7 @@
 
 mod deployment;
 mod fetch;
+mod http;
 mod ops;
 mod repo;
 mod runtime;

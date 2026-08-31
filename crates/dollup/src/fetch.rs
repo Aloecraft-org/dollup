@@ -94,7 +94,7 @@ impl Fetched {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(e.into()),
             },
-            Kind::Http(base) => match ureq::get(&format!("{base}/{rel}")).call() {
+            Kind::Http(base) => match crate::http::agent().get(&format!("{base}/{rel}")).call() {
                 Ok(resp) => {
                     let mut bytes = vec![];
                     resp.into_reader().take(MAX_FETCH).read_to_end(&mut bytes)?;
@@ -157,7 +157,8 @@ fn file_path(url: &str) -> Result<PathBuf> {
 }
 
 fn http_get(url: &str) -> Result<Vec<u8>> {
-    let resp = ureq::get(url)
+    let resp = crate::http::agent()
+        .get(url)
         .call()
         .with_context(|| format!("GET {url}"))?;
     let mut bytes = vec![];

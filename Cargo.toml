@@ -25,5 +25,10 @@ thiserror = "2"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
-ureq = { version = "2", default-features = false, features = ["tls", "native-certs", "gzip"] }
+ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }
+# Pinned to what ureq 2.12 itself builds against, because dollup hands it a
+# ClientConfig and the types have to be the same ones (see crates/dollup/src/http.rs).
+rustls = { version = "0.23.19", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+rustls-native-certs = "0.7"
+webpki-roots = "0.26"
 tempfile = "3"

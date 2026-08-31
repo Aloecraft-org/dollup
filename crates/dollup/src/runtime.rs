@@ -136,7 +136,7 @@ fn read_url(url: &str) -> Result<Vec<u8>> {
     if let Some(path) = url.strip_prefix("file://") {
         return Ok(std::fs::read(path)?);
     }
-    let resp = ureq::get(url).call()?;
+    let resp = crate::http::agent().get(url).call()?;
     let mut bytes = vec![];
     // 64 MiB: a DRT binary is ~4.5 MB and a tenfold surprise is a bug.
     resp.into_reader().take(64 << 20).read_to_end(&mut bytes)?;
