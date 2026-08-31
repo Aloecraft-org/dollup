@@ -59,6 +59,13 @@ enum Verb {
     Verify,
     /// Sweep the store against the lock.
     Gc,
+    /// Not a verb — `dollup drt get` reads naturally enough that it is
+    /// worth catching rather than answering "unrecognized subcommand".
+    #[command(hide = true)]
+    Drt {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        rest: Vec<String>,
+    },
     /// Fetch a runtime binary into the working directory. One file,
     /// hash-checked, dropped where you are. It does not install anything.
     Get {
@@ -315,6 +322,15 @@ fn main() -> Result<()> {
             let d = Deployment::open(&dir, cfg)?;
             println!("swept {} blob(s)", ops::gc(&d)?);
         }
+        Verb::Drt { rest } => {
+            let rest = rest.join(" ");
+            anyhow::bail!(
+                "there is no `drt` subcommand — the thing comes after the verb:\n  \
+                 dollup get drt{}{}",
+                if rest.is_empty() { "" } else { " " },
+                rest.trim_start_matches("get").trim()
+            );
+        }
         // Deliberately does NOT open a deployment: fetching a runtime
         // binary is not a deployment act, needs no config, and has to work
         // in an empty directory.
@@ -403,6 +419,19 @@ fn main() -> Result<()> {
                             "note: unsigned — with require_signatures set, a network source \
                              without a pinned key is refused at resolve time"
                         );
+                    }
+                    // A `file://` source that is not there yet is legal —
+                    // adding the source before mounting the media is the
+                    // air-gapped order of operations. Say it now anyway,
+                    // because the other reason a path is not there is a
+                    // typo, and that one costs a confusing `add` later.
+                    if let Some(path) = url.strip_prefix("file://") {
+                        if !std::path::Path::new(path).exists() {
+                            eprintln!(
+                                "note: {path} is not there yet — fine if you mount it later, \
+                                 a typo otherwise"
+                            );
+                        }
                     }
                 }
                 SourceVerb::Ls => {

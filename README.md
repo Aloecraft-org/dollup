@@ -53,6 +53,16 @@ dollup get drt --version v0.3.0 --slim  # a pin, and the size profile
 dollup get drt --from file:///mnt/xfer  # air-gapped: a directory, no network
 ```
 
+There is a working repo in this checkout, so the consumer side below can
+be run against something real before you publish anything of your own:
+
+```sh
+dollup init
+dollup source add "file://$PWD/std-repo"   # an absolute path: file:// takes no relative one
+dollup add hello
+dollup get drt && ./drt run code/hello/guest/hello.dlua
+```
+
 ```sh
 # Publisher side: a repo is a directory of packages.
 dollup repo index ./my-repo          # scan, validate, write index.json
