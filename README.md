@@ -80,10 +80,15 @@ dollup get drt && ./drt run code/hello/guest/hello.dlua
 
 ```sh
 # Publisher side: a repo is a directory of packages.
-dollup repo index ./my-repo          # scan, validate, write index.json
-dollup repo keygen --out repo.key    # repo.key (private, 0600) + repo.key.pub
-dollup repo sign ./my-repo --key-file repo.key
-dollup repo blobs ./my-repo          # optional: projection for a static mirror
+dollup repo keygen --out repo.key    # once, ever
+dollup repo publish ./my-repo --key-file repo.key --stage .publish
+rsync -avz --delete .publish/ user@host:/var/www/my-repo/
+
+# `publish` is seal + index + sign + blobs, and then the step people skip:
+# it RESOLVES the tree it just produced — a throwaway deployment, the tree as
+# a file:// source, every package added, verified against the lock — before
+# calling it publishable. The four steps are also separately available
+# (`repo seal|index|sign|blobs`) when you want them one at a time.
 
 # Consumer side: a deployment is a directory.
 dollup init
@@ -138,7 +143,8 @@ binary that needs nothing else installed.
 
 ## Not yet built (tracked, not forgotten)
 
-`update` and `lock` verbs; `get` for anything but `drt`; dependency version unification beyond
+`update` and `lock` verbs; `get` for anything but `drt`;
+deploying (`repo publish` stages a tree and prints it; rsync is yours); dependency version unification beyond
 first-wins; the `https` scheme's blob-wise fetching (it currently reads
 tree paths); writable non-file remotes for snapshot push (the `--export-state`
 gate is already in front of them); consuming `drt-config` types once DRT

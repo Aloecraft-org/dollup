@@ -13,7 +13,7 @@ mod store;
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use dollup_format::source::Ref;
 
@@ -161,6 +161,32 @@ enum RepoVerb {
     },
     /// Generate the blobs/ projection for a static mirror.
     Blobs { dir: PathBuf },
+    /// Print the public key belonging to a private one. Derived, so it
+    /// cannot drift from what actually signs a repo — which a `.pub` file
+    /// sitting beside the key can.
+    Pubkey {
+        #[arg(long, value_name = "PATH")]
+        key_file: PathBuf,
+    },
+    /// Seal every package, index, sign, project blobs — then prove the
+    /// result actually resolves before anything is copied anywhere.
+    Publish {
+        dir: PathBuf,
+        /// Sign the index with this key. The matching public key is derived
+        /// from it, never looked for beside it, and is what the self-check
+        /// pins — so what signed the repo and what verifies it cannot drift.
+        #[arg(long, value_name = "PATH")]
+        key_file: Option<PathBuf>,
+        /// Copy the four things that constitute a repo into this directory
+        /// and check that instead. What to rsync, without the README, the
+        /// scripts or the .git directory riding along.
+        #[arg(long, value_name = "DIR")]
+        stage: Option<PathBuf>,
+        /// Skip the blobs/ projection. Only a static HTTP mirror serves
+        /// blobs; a file://, git+ or zip+ repo never reads them.
+        #[arg(long)]
+        no_blobs: bool,
+    },
     /// Generate a keypair. With --out, nothing sensitive touches the
     /// terminal; without it BOTH KEYS PRINT — redirect line 1 (private)
     /// somewhere safe. The public line is what source entries pin.
@@ -514,6 +540,38 @@ fn main() -> Result<()> {
             }
             RepoVerb::Blobs { dir } => {
                 println!("projected {} blob(s)", repo::blobs(&dir)?);
+            }
+            RepoVerb::Pubkey { key_file } => {
+                let key = std::fs::read_to_string(&key_file)
+                    .with_context(|| format!("reading {}", key_file.display()))?;
+                println!("{}", dollup_format::sign::public_key_of(key.trim())?);
+            }
+            RepoVerb::Publish {
+                dir,
+                key_file,
+                stage,
+                no_blobs,
+            } => {
+                let out = repo::publish(&dir, key_file.as_deref(), stage.as_deref(), !no_blobs)?;
+                for line in &out.sealed {
+                    println!("{line}");
+                }
+                println!("indexed {} package(s)", out.packages);
+                match &out.signed_by {
+                    Some(key) => println!("signed, pin this key: {key}"),
+                    None => println!("unsigned — a network source needs `--key-file`"),
+                }
+                if out.blobs > 0 {
+                    println!("projected {} blob(s)", out.blobs);
+                }
+                println!("resolved the published tree:");
+                for line in &out.resolved {
+                    println!("  {line}");
+                }
+                println!(
+                    "publish {}/ — the tree is ready to copy",
+                    out.tree.display()
+                );
             }
             RepoVerb::Keygen { out } => {
                 let (private, public) = dollup_format::sign::keygen();
