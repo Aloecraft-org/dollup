@@ -6,6 +6,7 @@ mod deployment;
 mod fetch;
 mod ops;
 mod repo;
+mod runtime;
 mod snap;
 mod store;
 
@@ -24,6 +25,11 @@ struct Cli {
     /// is ever implicitly global.
     #[arg(long, global = true)]
     deployment: Option<PathBuf>,
+    /// The config file to use. Defaults to `DOLLUP_CONFIG` if set, then
+    /// `<deployment>/dollup.json`. Those three, and nothing else: no home
+    /// directory, no XDG lookup, and nothing written on first run.
+    #[arg(short = 'c', long, global = true, value_name = "FILE")]
+    config: Option<PathBuf>,
     #[command(subcommand)]
     verb: Verb,
 }
@@ -53,6 +59,25 @@ enum Verb {
     Verify,
     /// Sweep the store against the lock.
     Gc,
+    /// Fetch a runtime binary into the working directory. One file,
+    /// hash-checked, dropped where you are. It does not install anything.
+    Get {
+        /// What to fetch. `drt` is the only one today.
+        what: String,
+        /// A release tag, or `latest`.
+        #[arg(long, default_value = "latest")]
+        version: String,
+        /// The size profile rather than the full runtime.
+        #[arg(long)]
+        slim: bool,
+        /// Where to fetch from, replacing the default channel. Takes
+        /// `file://` too, which is the air-gapped case.
+        #[arg(long, value_name = "URL")]
+        from: Option<String>,
+        /// Where to write it (default: the working directory).
+        #[arg(long, value_name = "DIR")]
+        out: Option<PathBuf>,
+    },
     /// Push a snapshot blob to a remote. Snapshots are private by default:
     /// a non-file remote takes --export-state, said out loud.
     Push {
@@ -153,9 +178,13 @@ const STD_REPO_KEY: Option<&str> = None;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let dir = cli.deployment.unwrap_or_else(|| PathBuf::from("."));
+    // `--config` beats `DOLLUP_CONFIG` beats `<deployment>/dollup.json`.
+    // Resolved once, here, so nothing below reads the environment.
+    let cfg_env = deployment::from_env();
+    let cfg = cli.config.as_deref().or(cfg_env.as_deref());
     match cli.verb {
         Verb::Init => {
-            let mut d = Deployment::init(&dir)?;
+            let mut d = Deployment::init(&dir, cfg)?;
             // Someone who just typed `dollup init` wants to install
             // something, not to learn what a source is. Where the standard
             // key exists, scaffold it in and hand them a command that works;
@@ -186,7 +215,7 @@ fn main() -> Result<()> {
             with_host,
             with_host_native,
         } => {
-            let mut d = Deployment::open(&dir)?;
+            let mut d = Deployment::open(&dir, cfg)?;
             let r: Ref = r#ref.parse()?;
             let gates = ops::HostGates {
                 with_host: with_host || with_host_native,
@@ -197,7 +226,7 @@ fn main() -> Result<()> {
             }
         }
         Verb::Ls => {
-            let d = Deployment::open(&dir)?;
+            let d = Deployment::open(&dir, cfg)?;
             for (name, p) in &d.lock.packages {
                 println!(
                     "{name} {} ({}) ← {}",
@@ -211,7 +240,7 @@ fn main() -> Result<()> {
             }
         }
         Verb::Info { r#ref } => {
-            let d = Deployment::open(&dir)?;
+            let d = Deployment::open(&dir, cfg)?;
             let r: Ref = r#ref.parse()?;
             let entries = match &r.source {
                 Some(url) => vec![dollup_format::SourceEntry::Url(url.clone())],
@@ -271,7 +300,7 @@ fn main() -> Result<()> {
             anyhow::bail!("'{}' is in none of the sources", r.name);
         }
         Verb::Verify => {
-            let d = Deployment::open(&dir)?;
+            let d = Deployment::open(&dir, cfg)?;
             let problems = ops::verify(&d)?;
             if problems.is_empty() {
                 println!("clean: {} package(s) match the lock", d.lock.packages.len());
@@ -283,8 +312,28 @@ fn main() -> Result<()> {
             }
         }
         Verb::Gc => {
-            let d = Deployment::open(&dir)?;
+            let d = Deployment::open(&dir, cfg)?;
             println!("swept {} blob(s)", ops::gc(&d)?);
+        }
+        // Deliberately does NOT open a deployment: fetching a runtime
+        // binary is not a deployment act, needs no config, and has to work
+        // in an empty directory.
+        Verb::Get {
+            what,
+            version,
+            slim,
+            from,
+            out,
+        } => {
+            if what != "drt" {
+                anyhow::bail!("`dollup get` knows only `drt` today; got '{what}'");
+            }
+            runtime::get_drt(&runtime::GetOpts {
+                version,
+                slim,
+                from,
+                out: out.unwrap_or_else(|| PathBuf::from(".")),
+            })?;
         }
         Verb::Push {
             remote,
@@ -297,7 +346,7 @@ fn main() -> Result<()> {
             dv_abi,
             export_state,
         } => {
-            let mut d = Deployment::open(&dir)?;
+            let mut d = Deployment::open(&dir, cfg)?;
             let line = snap::push(
                 &mut d,
                 &remote,
@@ -315,13 +364,13 @@ fn main() -> Result<()> {
             println!("{line}");
         }
         Verb::Pull { remote, name } => {
-            let mut d = Deployment::open(&dir)?;
+            let mut d = Deployment::open(&dir, cfg)?;
             for line in snap::pull(&mut d, &remote, &name)? {
                 println!("{line}");
             }
         }
         Verb::Source(v) => {
-            let mut d = Deployment::open(&dir)?;
+            let mut d = Deployment::open(&dir, cfg)?;
             match v {
                 SourceVerb::Add { url, key, key_file } => {
                     dollup_format::source::Scheme::of(&url)?;

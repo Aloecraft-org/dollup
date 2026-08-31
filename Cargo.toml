@@ -25,5 +25,5 @@ thiserror = "2"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
-ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }
+ureq = { version = "2", default-features = false, features = ["tls", "native-certs", "gzip"] }
 tempfile = "3"

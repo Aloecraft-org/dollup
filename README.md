@@ -46,6 +46,14 @@ cargo build --release && export PATH="$PWD/target/release:$PATH"
 ```
 
 ```sh
+# Get the runtime. One file, hash-checked, dropped where you are --
+# it installs nothing and needs no config.
+dollup get drt                          # ./drt, from the latest release
+dollup get drt --version v0.3.0 --slim  # a pin, and the size profile
+dollup get drt --from file:///mnt/xfer  # air-gapped: a directory, no network
+```
+
+```sh
 # Publisher side: a repo is a directory of packages.
 dollup repo index ./my-repo          # scan, validate, write index.json
 dollup repo keygen --out repo.key    # repo.key (private, 0600) + repo.key.pub
@@ -74,6 +82,26 @@ materialized by default: `--with-host` admits wasm targets,
 `--with-host-native` additionally admits native ones — see
 [`THREAT-NOTES.md`](THREAT-NOTES.md) for why the second flag is loud.
 
+## Config
+
+Three ways to name the config, in this order, and no others:
+
+```sh
+dollup -c ./somewhere.json add telemetry   # an explicit file
+DOLLUP_CONFIG=./somewhere.json dollup add telemetry
+dollup add telemetry                       # <deployment>/dollup.json
+```
+
+**Nothing is read from your home directory, nothing is looked up in XDG,
+and nothing is written on a first run.** A tool that materializes a config
+so it can read it back has not avoided depending on the config; it has
+just stopped telling you. `dollup get` needs no config at all — it takes a
+URL or a default it prints every time.
+
+Writes go back to the file the config was read from, so `-c` is not a
+read-only view: `dollup -c x.json source add …` edits `x.json` and leaves
+no `dollup.json` behind.
+
 ## Building
 
 ```
@@ -85,7 +113,7 @@ binary that needs nothing else installed.
 
 ## Not yet built (tracked, not forgotten)
 
-`update` and `lock` verbs; dependency version unification beyond
+`update` and `lock` verbs; `get` for anything but `drt`; dependency version unification beyond
 first-wins; the `https` scheme's blob-wise fetching (it currently reads
 tree paths); writable non-file remotes for snapshot push (the `--export-state`
 gate is already in front of them); consuming `drt-config` types once DRT
