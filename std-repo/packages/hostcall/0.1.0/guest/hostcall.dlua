@@ -1,10 +1,22 @@
--- The hostcall discipline, written once.
+-- The hostcall discipline, written by hand.
 --
--- Every DRT hostcall is `{tok, call, args}` out and
--- `{tok, status, value|detail}` back. The token comes back verbatim, every
--- drained request is answered, and an unknown status means error — which is
--- what lets the host grow new statuses without breaking programs. That is
--- four rules a program should not re-implement per file.
+-- **You probably do not need this package.** The runtime already ships a
+-- `host` library that does everything below -- `host.time()`,
+-- `host.call(name, args)`, `host.try(name, args)`, `host.fs.read(path)` --
+-- and it is a permanent in the core rather than a package you install. The
+-- `hello` package beside this one uses it, and is what a program should
+-- look like.
+--
+-- This exists to show the substrate. Every DRT hostcall is `{tok, call,
+-- args}` out and `{tok, status, value|detail}` back. The token comes back
+-- verbatim, every drained request is answered, and an unknown status means
+-- error -- which is what lets the host grow new statuses without breaking
+-- programs. Reading those four rules once is worth more than the fifteen
+-- lines it takes to re-implement them.
+--
+-- The one real use for a package like this: a host that wires the pair
+-- under different queue names, which `M.open{calls=..., replies=...}`
+-- takes and the built-in library does not.
 --
 -- Nothing here is privileged. This library asks; whether an ask succeeds is
 -- decided entirely by what the deployment's config granted.

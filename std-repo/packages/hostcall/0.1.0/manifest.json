@@ -8,6 +8,6 @@
     "source_only": true
   },
   "files": {
-    "guest/hostcall.dlua": "sha256:0c9fef4992f6520cbdb510fa8f2a781976dc7de16bffb1d4434a86acc0d7a24b"
+    "guest/hostcall.dlua": "sha256:b2a1e65aa72b46c7680287cdb96f13a73a7eda4371620b1be6f977b6263600b2"
   }
 }

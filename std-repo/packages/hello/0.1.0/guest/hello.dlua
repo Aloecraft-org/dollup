@@ -1,22 +1,28 @@
--- What a deployment looks like from inside a program, using the standard
--- hostcall library instead of hand-rolling the token discipline.
+-- What a deployment looks like from inside a program.
 --
--- The program is identical whatever the host wired. What changes is what
--- the ceiling granted, and the program learns that as ordinary replies.
-
-local hostcall = require("hostcall")
-local host = hostcall.open()
+-- Every call below goes through the `host` library, which the runtime
+-- provides: it owns the `host/calls`/`host/replies` queue pair, allocates
+-- tokens, correlates replies, and turns a non-ok status into an error with
+-- the connector's own sentence in it. Nothing here is privileged --
+-- whether an ask succeeds is decided entirely by what the config granted.
+--
+-- The `hostcall` package beside this one is the same discipline written by
+-- hand. Read that one to see the substrate; write this one.
 
 -- The one nondeterminism every program eventually wants. It arrives as a
--- message, which is why a replay could replay the same moment.
-local now = host:ask("time")
-print("time:      " .. now.status .. " " .. tostring(now.value))
+-- message, which is why a replay could replay the same moment. It is
+-- `host.time()` and not `time.now()` because a clock is a capability, not
+-- arithmetic; `time` is the pure calendar library.
+print("time:      " .. host.time())
 
 -- A file inside the directory the host granted. The config named the
 -- directory; this program names the file. Neither knows the other's half.
-local note, detail = host:try("fs/read", { path = "note.txt" })
-print("fs/read:   " .. tostring(note or detail))
+-- `try_read` returns the status rather than raising it, because a denial
+-- is an ordinary answer here.
+local note, status, detail = host.fs.try_read("note.txt")
+print("fs/read:   " .. status .. " " .. tostring(detail or note))
 
 -- A family the host never wired. Answered, not dropped: every drained
 -- request gets a reply, and "denied" is one.
-print("sql wired: " .. tostring(host:granted("sql/query")))
+local _, sql_status, sql_detail = host.try("sql/query", { sql = "select 1" })
+print("sql/query: " .. sql_status .. " " .. tostring(sql_detail))

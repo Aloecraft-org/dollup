@@ -12,12 +12,9 @@
     "capabilities": [
       "host:time",
       "host:fs/read"
-    ],
-    "packages": {
-      "hostcall": "^0.1"
-    }
+    ]
   },
   "files": {
-    "guest/hello.dlua": "sha256:20b9bdd09ea7a3912690c9d36b036bf92c7877d511a7453b29421c5d290277d0"
+    "guest/hello.dlua": "sha256:a951b7567adc3ca3f68c8585f2032fa3f74bb19e2dd88bef6b51ae32bce18089"
   }
 }
