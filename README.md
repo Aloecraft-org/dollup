@@ -28,6 +28,25 @@ than dollup itself.
 | [`doc/CodeResolution.md`](doc/CodeResolution.md) | The ask to DRT: the code root, `Program` growth, admission checks — staged so nothing blocks DRT's milestone |
 | [`THREAT-NOTES.md`](THREAT-NOTES.md) | What dollup checks and deliberately does not |
 
+## Installing
+
+```sh
+curl -fsSL https://github.com/Aloecraft-org/dollup/releases/latest/download/install.sh | sh
+```
+
+Or take the binary straight from
+[Releases](https://github.com/Aloecraft-org/dollup/releases) — every one
+carries `SHA256SUMS.txt` and a `BUILDINFO.txt` naming the commit it was built
+from. `DOLLUP_VERSION=vX.Y.Z` pins a release, `DOLLUP_PREFIX=` chooses the
+directory, and `DOLLUP_SOURCE=file:///mnt/xfer` installs with no network at
+all.
+
+From a checkout, when you want the tip rather than a release:
+
+```sh
+cargo build --release && export PATH="$PWD/target/release:$PATH"
+```
+
 ## Workspace
 
 | crate | what |
@@ -37,13 +56,9 @@ than dollup itself.
 
 ## A five-minute life
 
-`dollup` is not on `PATH` in a fresh checkout. Either prefix the commands
-below with `./target/release/`, or put it on `PATH` once:
-
-```sh
-cargo build --release && export PATH="$PWD/target/release:$PATH"
-# or, permanently:  cargo install --path crates/dollup
-```
+The commands below assume `dollup` is on your `PATH` (see *Installing*). It
+is not, in a fresh checkout — prefix them with `./target/release/` instead,
+which is also what every hint dollup prints will say back to you.
 
 ```sh
 # Get the runtime. One file, hash-checked, dropped where you are --

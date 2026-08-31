@@ -32,3 +32,15 @@ rustls = { version = "0.23.19", default-features = false, features = ["ring", "l
 rustls-native-certs = "0.7"
 webpki-roots = "0.26"
 tempfile = "3"
+
+# The artifact profile. dollup travels — onto a build host, into a container,
+# through an air gap on a USB stick — so the released binary is optimized for
+# size rather than for the last few percent of speed. Nothing dollup does is
+# CPU-bound; it hashes a few megabytes and writes files.
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

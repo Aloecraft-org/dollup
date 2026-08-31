@@ -1,0 +1,210 @@
+name: Release
+
+# Builds and (optionally) publishes a dollup release for one specific commit.
+# The shape is diluvium-drt's release.yml, kept deliberately: a tag push
+# publishes; a manual run is a full rehearsal by default — tests, every
+# platform, artifacts left on the run — and touches the Releases page only
+# when publish=true.
+#
+# The smoke test is the point of the whole file. Every artifact must not just
+# link but RESOLVE: it indexes this checkout's std-repo, adds a package from
+# it over file://, and verifies the result against the lock. A binary that
+# cannot do that is not a dollup, however cleanly it compiled.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit SHA, branch or tag to release (blank = the selected branch)'
+        type: string
+        required: false
+        default: ''
+      tag:
+        description: 'Tag name, e.g. v0.1.0 (required when publishing)'
+        type: string
+        required: false
+        default: ''
+      publish:
+        description: 'Publish to the Releases page. Leave off for a rehearsal.'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      publish: ${{ steps.check.outputs.publish }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+      - id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -eu
+          if [ "$EVENT" = push ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            PUBLISH=true
+          else
+            TAG="$IN_TAG"
+            PUBLISH="${IN_PUBLISH:-false}"
+            if [ "$PUBLISH" = true ] && [ -z "$TAG" ]; then
+              echo "::error::publish=true requires a tag name."
+              exit 1
+            fi
+            if [ -n "$TAG" ] && git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "::error::tag '$TAG' already exists."
+              exit 1
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Tests
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      # The same gates ci.yml keeps, because a release must not be a way
+      # around them.
+      - run: test -s THREAT-NOTES.md
+      - run: python3 ci/check-strings.py
+      - run: python3 web/check.py
+      - run: cargo run -q -p dollup -- repo index std-repo
+      - run: git diff --exit-code std-repo/index.json
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: [preflight, test]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl: drops onto any Linux box with nothing installed,
+          # which is the whole distribution story. `ring` (under rustls)
+          # compiles C, so musl-tools is required even though dollup itself
+          # is pure Rust — that is the one build dependency here.
+          - name: linux_static_x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            setup: 'sudo apt-get update && sudo apt-get install -y musl-tools'
+          - name: darwin_arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            setup: 'true'
+          # An Intel runner rather than a cross-build, so the smoke test
+          # below can actually RUN the artifact. Every binary in a release
+          # has been executed before it ships.
+          - name: darwin_x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            setup: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+      - name: Setup
+        run: ${{ matrix.setup }}
+      - name: Build
+        run: |
+          set -eu
+          cargo build --profile release-small -p dollup --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/release-small/dollup dollup_${{ matrix.name }}
+      - name: Smoke test — it must resolve, not merely run
+        run: |
+          set -eu
+          BIN="$PWD/dollup_${{ matrix.name }}"
+          "$BIN" --version
+          # A publisher round trip over the repo in this checkout...
+          "$BIN" repo index std-repo
+          # ...and a consumer one against it, in a scratch deployment.
+          work=$(mktemp -d)
+          cd "$work"
+          "$BIN" init
+          "$BIN" source add "file://$GITHUB_WORKSPACE/std-repo"
+          "$BIN" add hello
+          "$BIN" verify
+          test -f code/hello/guest/hello.dlua
+          echo "smoke: resolved and verified a package from a file:// repo"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dollup-${{ matrix.name }}
+          path: dollup_*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish release
+    needs: [preflight, test, build]
+    if: needs.preflight.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dollup-*
+          path: release_dist
+          merge-multiple: true
+      - name: BUILDINFO and checksums
+        run: |
+          set -eu
+          # install.sh ships as a release asset so the curl|sh front door has
+          # a URL that exists with no server-side work.
+          cp install.sh release_dist/install.sh
+          cd release_dist
+          {
+            echo "tag: ${{ needs.preflight.outputs.tag }}"
+            echo "commit: ${{ needs.preflight.outputs.sha }}"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > BUILDINFO.txt
+          sha256sum dollup_* BUILDINFO.txt install.sh > SHA256SUMS.txt
+          cat BUILDINFO.txt SHA256SUMS.txt
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ needs.preflight.outputs.sha }}
+          name: dollup ${{ needs.preflight.outputs.tag }}
+          files: release_dist/*
+          generate_release_notes: true

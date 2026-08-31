@@ -39,7 +39,9 @@ pub fn agent() -> ureq::Agent {
 }
 
 fn build() -> ureq::Agent {
-    ureq::AgentBuilder::new().tls_config(Arc::new(client_config())).build()
+    ureq::AgentBuilder::new()
+        .tls_config(Arc::new(client_config()))
+        .build()
 }
 
 fn client_config() -> rustls::ClientConfig {
@@ -61,9 +63,7 @@ fn roots() -> rustls::RootCertStore {
 /// the whole point of this module — is testable without a machine that has
 /// no certificates on it. Order does not matter: a root store is a set, and
 /// a chain to either source is accepted.
-fn roots_from(
-    native: Vec<rustls::pki_types::CertificateDer<'static>>,
-) -> rustls::RootCertStore {
+fn roots_from(native: Vec<rustls::pki_types::CertificateDer<'static>>) -> rustls::RootCertStore {
     let mut store = rustls::RootCertStore::empty();
     store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let (_added, _ignored) = store.add_parsable_certificates(native);
@@ -82,7 +82,7 @@ mod tests {
         // a log line nobody prints. Here it still has webpki's.
         let bare = roots_from(vec![]);
         assert_eq!(bare.len(), webpki_roots::TLS_SERVER_ROOTS.len());
-        assert!(bare.len() > 0, "webpki ships roots");
+        assert!(!bare.is_empty(), "webpki ships roots");
     }
 
     #[test]

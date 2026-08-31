@@ -74,8 +74,8 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
     };
 
     println!("fetching {base}/{asset}");
-    let bytes = read_url(&format!("{base}/{asset}"))
-        .with_context(|| format!("no {asset} at {base}"))?;
+    let bytes =
+        read_url(&format!("{base}/{asset}")).with_context(|| format!("no {asset} at {base}"))?;
 
     // Verify against the sums file beside it. A missing sums file warns
     // rather than refuses — a release older than the sums-publishing
@@ -93,7 +93,11 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
             }
             Some(want) => {
                 let have = dollup_format::identity::hash_bytes(&bytes);
-                let have = have.0.strip_prefix("sha256:").unwrap_or(&have.0).to_string();
+                let have = have
+                    .0
+                    .strip_prefix("sha256:")
+                    .unwrap_or(&have.0)
+                    .to_string();
                 if want != have {
                     bail!(
                         "checksum mismatch for {asset}\n  expected {want}\n  got      {have}\n  from     {base}"
@@ -105,8 +109,7 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
     };
 
     let dest = opts.out.join("drt");
-    write_executable(&dest, &bytes)
-        .with_context(|| format!("writing {}", dest.display()))?;
+    write_executable(&dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
 
     println!("wrote {} ({} bytes)", dest.display(), bytes.len());
     println!("  checked: {checked}");
