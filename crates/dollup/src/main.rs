@@ -182,6 +182,20 @@ const STD_REPO_URL: &str = "https://dollup.aloecraft.org/std-repo/";
 /// to read first, so it is worth doing the day the key exists.
 const STD_REPO_KEY: Option<&str> = None;
 
+/// How this process was invoked, for printing back in hints.
+///
+/// `dollup get drt` drops a binary in the working directory rather than on
+/// a PATH, which is the right default — but it means the tool is usually
+/// reached as `./dollup`, and every hint that says "run `dollup add`"
+/// answers `command not found`. Echoing argv[0] is always right: run it as
+/// `dollup`, `./dollup` or `../target/release/dollup` and the hints match.
+fn me() -> String {
+    match std::env::args().next() {
+        Some(a) if !a.is_empty() => a,
+        _ => "dollup".to_string(),
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let dir = cli.deployment.unwrap_or_else(|| PathBuf::from("."));
@@ -210,10 +224,11 @@ fn main() -> Result<()> {
                     println!("  dollup ls            see what is installed");
                 }
                 None => {
+                    let me = me();
                     println!("Add somewhere to install from, then install:");
                     println!();
-                    println!("  dollup source add <url> --key <key>");
-                    println!("  dollup add <name>");
+                    println!("  {me} source add <url> --key <key>");
+                    println!("  {me} add <name>");
                 }
             }
         }
@@ -390,6 +405,19 @@ fn main() -> Result<()> {
             match v {
                 SourceVerb::Add { url, key, key_file } => {
                     dollup_format::source::Scheme::of(&url)?;
+                    // `file://$PWD/../std-repo` is how a shell hands over a
+                    // sibling directory, and storing it with the `..` still
+                    // in it puts a path in the config whose meaning depends
+                    // on where it was typed. Resolve it when it exists;
+                    // leave it verbatim when it does not, because the
+                    // air-gapped case adds the source before the mount.
+                    let url = match url.strip_prefix("file://") {
+                        Some(path) => match std::fs::canonicalize(path) {
+                            Ok(real) => format!("file://{}", real.display()),
+                            Err(_) => url,
+                        },
+                        None => url,
+                    };
                     if d.config.sources.iter().any(|e| e.url() == url) {
                         anyhow::bail!("{url} is already a source");
                     }
@@ -414,10 +442,26 @@ fn main() -> Result<()> {
                         "added {url} ({})",
                         if signed { "signed" } else { "unsigned" }
                     );
-                    if !signed {
+                    // Warn about the refusal that will actually happen, and
+                    // only that one. `require_signatures` exempts file
+                    // transports (`Scheme::network()` is HTTPS alone), so
+                    // the old unconditional note fired on every `file://`
+                    // source and told the reader their source would be
+                    // "refused at resolve time" when it would not be — and
+                    // `init` writes require_signatures: true, so it was the
+                    // first thing anyone saw and it was false.
+                    let network = dollup_format::source::Scheme::of(&url)?.network();
+                    if !signed && network && d.config.require_signatures {
                         eprintln!(
-                            "note: unsigned — with require_signatures set, a network source \
-                             without a pinned key is refused at resolve time"
+                            "warning: {url} is unsigned and this deployment sets \
+                             require_signatures — resolving from it WILL be refused. \
+                             Pin the publisher's key with --key, or clear \
+                             require_signatures in the config."
+                        );
+                    } else if !signed && network {
+                        eprintln!(
+                            "note: {url} is unsigned, and require_signatures is off, \
+                             so nothing checks who published what it serves"
                         );
                     }
                     // A `file://` source that is not there yet is legal —

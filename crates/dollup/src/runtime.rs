@@ -110,7 +110,15 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
 
     println!("wrote {} ({} bytes)", dest.display(), bytes.len());
     println!("  checked: {checked}");
-    println!("  it is not on your PATH; move it there if you want it there");
+    // Name the invocation that works. `get` deliberately installs nothing,
+    // so the binary is not on a PATH, and "it is not on your PATH" told
+    // people a true thing without telling them what to type.
+    let run_as = if dest.is_absolute() {
+        dest.display().to_string()
+    } else {
+        format!("./{}", dest.display().to_string().trim_start_matches("./"))
+    };
+    println!("  run it: {run_as} --version");
     Ok(())
 }
 
