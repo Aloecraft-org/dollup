@@ -54,6 +54,9 @@ pub struct IndexEntry {
     /// first thing anyone asks of a listing.
     #[serde(default)]
     pub runnable: bool,
+    /// Copied by `dollup new` rather than installed by `dollup add`.
+    #[serde(default)]
+    pub template: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<String>,
 }

@@ -1,0 +1,21 @@
+{
+  "_comment": "The other half of the app. This file decides what app.dlua may do; app.dlua decides what it does with that. Edit freely — dollup will not touch this file again.",
+
+  "program": { "path": "app.dlua" },
+
+  "_caps": "The ceiling. Take this entry out and the fs lines below stop being answered — the program keeps running and reports `denied`.",
+  "caps": [
+    { "capability": "host:fs/*" }
+  ],
+
+  "_connectors": "A connector is wired to a PLACE. The directory is a machine fact and belongs here; the filenames are the program's.",
+  "connectors": {
+    "fs": {
+      "scope": {
+        "scope": "./workspace",
+        "access": "readwrite",
+        "max_bytes": 65536
+      }
+    }
+  }
+}

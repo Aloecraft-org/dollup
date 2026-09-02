@@ -76,8 +76,7 @@ requirement picks one.
 
 | package | what |
 |---|---|
-| `hostcall` | The `{tok, call, args}` discipline written once: token matching, `ask`/`try`/`must`, and `granted` to tell "denied" from "not wired". |
-| `hello` | What a deployment looks like from inside a program. Depends on `hostcall`, so adding it demonstrates dependency resolution. |
+| `starter` | A template: a program and the config that grants it, to copy and edit. `dollup new starter` |
 
 ## Consuming it
 

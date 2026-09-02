@@ -1,0 +1,5 @@
+The directory app.json grants fs access to.
+
+app.dlua writes hello.txt here. Nothing outside this directory is reachable,
+whatever the program asks for — that is the scope doing its job, not the
+program being polite.

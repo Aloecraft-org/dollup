@@ -382,3 +382,105 @@ fn one_deployment_one_meaning_per_capability_name() {
     assert!(out.contains("defines host:can"), "{out}");
     assert!(out.contains("shape 2"), "{out}");
 }
+
+#[test]
+fn a_template_is_copied_and_never_locked() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "starter",
+            "version": "0.1.0",
+            "template": true,
+            "requires": { "packages": { "can": "^0.1" } }
+        }),
+        &[
+            ("app.dlua", b"print('yours now')"),
+            ("app.json", b"{\"program\":{\"path\":\"app.dlua\"}}"),
+        ],
+    );
+    build_repo(&repo); // `can`, so the template has a dependency to resolve
+    run(dollup().args(["repo", "index"]).arg(&repo));
+
+    let dep = tmp.path().join("app");
+    // `new` starts an app where there is none, so an empty directory works.
+    let cfg = serde_json::json!({
+        "sources": [format!("file://{}", repo.display())],
+        "require_signatures": true,
+        "code_root": "code"
+    });
+    fs::create_dir_all(&dep).unwrap();
+    fs::write(
+        dep.join("dollup.json"),
+        serde_json::to_vec_pretty(&cfg).unwrap(),
+    )
+    .unwrap();
+
+    let out = run(dollup().arg("--app").arg(&dep).args(["new", "starter"]));
+    assert!(out.contains("app.dlua"), "{out}");
+
+    // The template's own files land in the app and are NOT locked — you are
+    // meant to edit them, and a locked file you edit is a verify failure.
+    assert!(dep.join("app.dlua").exists());
+    assert!(dep.join("app.json").exists(), "a template may carry config");
+    let lock: serde_json::Value =
+        serde_json::from_slice(&fs::read(dep.join("dollup.lock")).unwrap()).unwrap();
+    assert!(
+        lock["packages"]["starter"].is_null(),
+        "template is not locked"
+    );
+    // Its dependency is an ordinary package: added and locked as usual.
+    assert!(
+        !lock["packages"]["can"].is_null(),
+        "dependency is locked: {lock}"
+    );
+
+    // Editing what you were given does not make the app dirty.
+    fs::write(dep.join("app.dlua"), b"print('edited')").unwrap();
+    run(dollup().arg("--app").arg(&dep).arg("verify"));
+
+    // A second `new` will not overwrite the work.
+    let msg = fail(dollup().arg("--app").arg(&dep).args(["new", "starter"]));
+    assert!(msg.contains("would overwrite your work"), "{msg}");
+
+    // And the verbs do not accept each other's arguments.
+    let msg = fail(dollup().arg("--app").arg(&dep).args(["add", "starter"]));
+    assert!(msg.contains("dollup new starter"), "{msg}");
+    let msg = fail(dollup().arg("--app").arg(&dep).args(["new", "can"]));
+    assert!(msg.contains("dollup add can"), "{msg}");
+}
+
+#[test]
+fn uncheckable_requirements_are_refused_rather_than_ignored() {
+    use std::process::Command as C;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    // A call-shape range no host reports, so nothing could evaluate it.
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "ranged", "version": "0.1.0",
+            "guest": { "main": "m", "modules": { "m": "m.dlua" } },
+            "requires": { "connectors": { "sql": ">=1, <2" } }
+        }),
+        &[("m.dlua", b"return {}")],
+    );
+    let mut c: C = dollup();
+    let msg = fail(c.args(["repo", "index"]).arg(&repo));
+    assert!(msg.contains("connector versions are not reported"), "{msg}");
+
+    // And a diluvium requirement that is not a revision.
+    fs::remove_dir_all(repo.join("packages/ranged")).unwrap();
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "verreq", "version": "0.1.0",
+            "guest": { "main": "m", "modules": { "m": "m.dlua" } },
+            "requires": { "diluvium": ">=5.5.1" }
+        }),
+        &[("m.dlua", b"return {}")],
+    );
+    let msg = fail(dollup().args(["repo", "index"]).arg(&repo));
+    assert!(msg.contains("is not a revision"), "{msg}");
+}

@@ -143,6 +143,14 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
         )?;
         let source = &opened[source_idx];
         let manifest = admit(source, &name, &version, &entry)?;
+        if manifest.template {
+            bail!(
+                "'{name}' is a starting point, not a dependency — installing it \
+                 would lock files you are meant to edit.\n\
+                 \n  \
+                 copy it instead:  dollup new {name}"
+            );
+        }
 
         // One deployment, one meaning per capability name: the lock pins
         // name → contract identity, and a different declaration under a
@@ -412,4 +420,103 @@ pub fn gc(deployment: &Deployment) -> Result<usize> {
         .chain(deployment.lock.snapshots.values().map(|s| s.state.clone()))
         .collect();
     Store::open(&deployment.store_dir())?.gc(&keep)
+}
+
+/// `dollup new`: a template is a starting point, so its files are copied
+/// into the app and never locked — you are meant to edit them, and a locked
+/// file you edit is a `verify` failure. Its dependencies are ordinary
+/// packages and are added and locked as usual.
+///
+/// This is the one path by which dollup delivers config, and the doctrine
+/// holds: copying a file into a directory you own is not writing config into
+/// a running app. Compare `add`, which never places a config at all.
+pub fn new_from_template(deployment: &mut Deployment, r: &Ref) -> Result<Vec<String>> {
+    let entries: Vec<SourceEntry> = match &r.source {
+        Some(url) => vec![deployment
+            .config
+            .sources
+            .iter()
+            .find(|e| e.url() == url)
+            .cloned()
+            .unwrap_or_else(|| SourceEntry::Url(url.clone()))],
+        None => deployment.config.sources.clone(),
+    };
+    if entries.is_empty() {
+        bail!(
+            "nothing to start from: this app has no package sources.\n\
+             \n  \
+             add one:  dollup source add <url> --key <key>"
+        );
+    }
+
+    let mut opened: Vec<OpenSource> = vec![];
+    let (idx, version, entry) = find(
+        &entries,
+        &mut opened,
+        deployment.config.require_signatures,
+        &r.name,
+        r.version.as_ref(),
+    )?;
+    let source = &opened[idx];
+    let manifest = admit(source, &r.name, &version, &entry)?;
+    if !manifest.template {
+        bail!(
+            "'{}' is not a template — it is a package you depend on.\n\
+             \n  \
+             install it:  dollup add {}",
+            r.name,
+            r.name
+        );
+    }
+
+    // Refuse to clobber. A starting point that overwrites the work already
+    // here is not a starting point.
+    let existing: Vec<&String> = manifest
+        .files
+        .keys()
+        .filter(|rel| deployment.dir.join(rel).exists())
+        .collect();
+    if !existing.is_empty() {
+        bail!(
+            "these already exist here, so '{}' would overwrite your work: {}",
+            r.name,
+            existing
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    let mut report = vec![];
+    for (rel, want) in &manifest.files {
+        let remote = format!("{}/{}", entry.path, rel);
+        let bytes = source.fetched.read(&remote)?.with_context(|| {
+            format!(
+                "{}: {remote} is named by the manifest but absent",
+                source.entry.url()
+            )
+        })?;
+        if &hash_bytes(&bytes) != want {
+            bail!(
+                "{}: {remote} does not match its manifest hash — refusing",
+                source.entry.url()
+            );
+        }
+        write_file(&deployment.dir.join(rel), &bytes)?;
+        report.push(format!("  {rel}"));
+    }
+    report.insert(0, format!("From {} {version}:", r.name));
+
+    // Dependencies are packages, not starting points: added and locked.
+    for (dep, req) in &manifest.requires.packages {
+        let dep_ref = Ref {
+            source: Some(source.entry.url().to_string()),
+            name: dep.clone(),
+            version: Some(req.clone()),
+        };
+        report.extend(add(deployment, &dep_ref, HostGates::default())?);
+    }
+    deployment.save()?;
+    Ok(report)
 }

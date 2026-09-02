@@ -21,6 +21,14 @@ pub struct Manifest {
     pub guest: Option<Guest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<Host>,
+    /// A starting point rather than a dependency: `dollup new` copies it
+    /// into your app and does **not** lock it, because you are meant to edit
+    /// it and a locked file you edit is a `verify` failure. This is also the
+    /// one shape that may carry config — copying a file into a directory you
+    /// own is not installing config into a running app, so "config is
+    /// authority" survives intact.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub template: bool,
     /// Asset name → path. Not code; reached through an fs scope the
     /// deployment grants, never through code loading.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -109,14 +117,21 @@ pub struct Requires {
     /// Generic capability names the host must offer. No scopes, ever.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<String>,
-    /// Connector name → call-shape version requirement.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub connectors: BTreeMap<String, semver::VersionReq>,
+    /// Connectors the host build must carry.
+    #[serde(default, skip_serializing_if = "ConnectorReq::is_empty")]
+    pub connectors: ConnectorReq,
     /// Package name → version requirement. Hashes land in the lock.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub packages: BTreeMap<String, semver::VersionReq>,
+    /// The diluvium revision this package needs, as the 40-hex git revision
+    /// `drt buildinfo` reports. Deliberately not a version requirement: the
+    /// core exposes no version string at runtime, and the released spelling
+    /// (`5.5.1_build12p1`) is not semver — the semver-shaped form puts the
+    /// build in metadata, which precedence comparison *ignores*, so
+    /// `>=5.5.1` cannot tell `build12` from `build12p1`. That is precisely
+    /// the distinction anyone asks this field about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diluvium: Option<semver::VersionReq>,
+    pub diluvium: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dv_abi: Option<AbiReq>,
 }
@@ -167,6 +182,42 @@ mod abi_tests {
     }
 }
 
+/// What a package may say about connectors. Names are checkable today —
+/// `drt buildinfo` reports them. Call-shape ranges are not, so the shape is
+/// reserved and refused rather than accepted and ignored: admitting a
+/// package on a constraint nobody evaluates is the same lie as a version
+/// field nothing can check. When hosts report shapes the refusal lifts and
+/// no format changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ConnectorReq {
+    Names(Vec<String>),
+    Versioned(BTreeMap<String, semver::VersionReq>),
+}
+
+impl Default for ConnectorReq {
+    fn default() -> Self {
+        ConnectorReq::Names(Vec::new())
+    }
+}
+
+impl ConnectorReq {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ConnectorReq::Names(n) => n.is_empty(),
+            ConnectorReq::Versioned(m) => m.is_empty(),
+        }
+    }
+
+    /// The names, whichever form was written.
+    pub fn names(&self) -> Vec<&str> {
+        match self {
+            ConnectorReq::Names(n) => n.iter().map(String::as_str).collect(),
+            ConnectorReq::Versioned(m) => m.keys().map(String::as_str).collect(),
+        }
+    }
+}
+
 impl Requires {
     pub fn is_empty(&self) -> bool {
         self.capabilities.is_empty()
@@ -196,6 +247,14 @@ pub enum ManifestError {
     ProvidesUndeclared(String),
     #[error("guest face is marked source_only but '{0}' does not end in .dlua or .lua")]
     NotSource(String),
+    #[error(
+        "requires.connectors states call-shape versions ({0}), and connector \
+         versions are not reported by any host yet — name the connectors \
+         instead, as a list"
+    )]
+    ConnectorVersionsUncheckable(String),
+    #[error("requires.diluvium '{0}' is not a revision: expected the 40-hex git revision `drt buildinfo` reports")]
+    DiluviumNotARevision(String),
 }
 
 impl Manifest {
@@ -240,6 +299,18 @@ impl Manifest {
                         });
                     }
                 }
+            }
+        }
+        if let ConnectorReq::Versioned(m) = &self.requires.connectors {
+            if !m.is_empty() {
+                return Err(ManifestError::ConnectorVersionsUncheckable(
+                    m.keys().cloned().collect::<Vec<_>>().join(", "),
+                ));
+            }
+        }
+        if let Some(rev) = &self.requires.diluvium {
+            if rev.len() != 40 || !rev.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(ManifestError::DiluviumNotARevision(rev.clone()));
             }
         }
         for (name, path) in &self.assets {

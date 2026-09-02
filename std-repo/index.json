@@ -2,31 +2,15 @@
   "dollup_repo": 1,
   "hash": "sha256",
   "packages": {
-    "hello": {
+    "starter": {
       "versions": {
         "0.1.0": {
-          "path": "packages/hello/0.1.0",
-          "manifest": "sha256:c4541dcfaa19bd92a88f33c8d1bd4d45b66a26b4c9a84ebafcb6baa40e79d20d",
-          "package_id": "sha256:ff22365fad025ab71c46b7b25dcd6745996f5efddaf5b426d51c618e58de31d3",
-          "code_set": "sha256:71c15e2af3ee44139de7804c6e15b875f1ba85d9fe8c0606794ac79e704b2a92",
-          "faces": [
-            "guest"
-          ],
-          "runnable": true
-        }
-      }
-    },
-    "hostcall": {
-      "versions": {
-        "0.1.0": {
-          "path": "packages/hostcall/0.1.0",
-          "manifest": "sha256:2c6dfc5589e20d058173c0ed3d717a103f0461a711c8b1ecf6d293a7cb421155",
-          "package_id": "sha256:2fd9c7e89013449e9cc351bb9a887c56b0cec4f1511eee2c7414446ada91b515",
-          "code_set": "sha256:852b93316fd2caba11b0c6dba3c07a60163439cbd317cbc2ea41a6dcd353bbbe",
-          "faces": [
-            "guest"
-          ],
-          "runnable": false
+          "path": "packages/starter/0.1.0",
+          "manifest": "sha256:dc2ccc0b5d2f9ead2117544b04ae9922cdf3c8259ad1220154fe1ff57d258f3f",
+          "package_id": "sha256:087db349658ef3d2656d49557f9327aa7e25fa06fc0a3a48bad7b2b82dc71da5",
+          "faces": [],
+          "runnable": false,
+          "template": true
         }
       }
     }

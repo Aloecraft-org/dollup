@@ -75,6 +75,7 @@ pub fn index(repo: &Path) -> Result<RepoIndex> {
                     .map(|g| code_set_identity(g.main.as_deref(), &manifest.guest_files())),
                 faces,
                 runnable: manifest.guest.as_ref().is_some_and(|g| g.main.is_some()),
+                template: manifest.template,
                 targets: manifest
                     .host
                     .as_ref()

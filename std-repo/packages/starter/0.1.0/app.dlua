@@ -1,0 +1,38 @@
+-- A drt app: this file and the config beside it.
+--
+--   drt run --config app.json
+--
+-- Both halves are yours now. The interesting edit is app.json: take a
+-- capability away and watch this program keep running and say so.
+
+print("dollup starter")
+print("")
+
+-- The clock is a capability, not arithmetic — a connector answers it, so the
+-- moment lands in the log and a replay replays it rather than the replayer's.
+print(string.format("  %-10s %s", "time", host.time()))
+
+-- host.try hands back the reply's status instead of raising on a refusal.
+-- Reach for it wherever "no" is an answer rather than a bug — which, in a
+-- program whose grants live in someone else's config, is most places.
+local function attempt(label, name, args)
+    local value, status, detail = host.try(name, args)
+    if status == "ok" then
+        print(string.format("  %-10s %s", label, tostring(value)))
+    else
+        print(string.format("  %-10s %s: %s", label, status, tostring(detail)))
+    end
+    return value, status
+end
+
+-- The directory is the config's to name; the filename is this program's.
+-- Neither half knows the other's, which is the whole point of the split.
+attempt("write", "fs/write", { path = "hello.txt", data = "written by the starter\n" })
+attempt("read", "fs/read", { path = "hello.txt" })
+
+-- Not wired by app.json, so it answers `denied` rather than failing. Grant
+-- it there and this line starts working with no change to this file.
+attempt("sql", "sql/query", { sql = "select 1" })
+
+print("")
+print("Now open app.json and take `host:fs/*` out of `caps`.")

@@ -1,0 +1,22 @@
+{
+  "name": "starter",
+  "version": "0.1.0",
+  "template": true,
+  "requires": {
+    "capabilities": [
+      "host:time",
+      "host:fs/read",
+      "host:fs/write"
+    ],
+    "connectors": [
+      "time",
+      "fs"
+    ],
+    "dv_abi": 1
+  },
+  "files": {
+    "app.dlua": "sha256:1de899c3017c1e3905833c5d5b58ed10df7dd14a5aed7b81c76ddae0167fbe3e",
+    "app.json": "sha256:d1813524f40d5e3e913fdabaddebf1dd8b7d97998e8149d47c2894d9b178609c",
+    "workspace/notes.txt": "sha256:dfbd18b0ad1ec32604a3095b2a6608addf923faade08f281101b0fb5143d69b4"
+  }
+}

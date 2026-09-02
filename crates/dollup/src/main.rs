@@ -2,7 +2,7 @@
 //! Install is inert; config is authority; materializing files is the last
 //! act. SPEC.md is the map.
 
-mod deployment;
+pub mod deployment;
 mod fetch;
 mod ops;
 mod repo;
@@ -32,6 +32,12 @@ struct Cli {
 enum Verb {
     /// Start an app here: config, empty lockfile, code root.
     Init,
+    /// Copy a starter template into this app: files you own and edit, not
+    /// a locked dependency. Starts an app here if there is not one.
+    New {
+        /// `name`, `name@^1.2`, or `<source-url>#name`.
+        r#ref: String,
+    },
     /// Fetch a package (and its dependencies), lock, populate. Inert.
     Add {
         /// `name`, `name@^1.2`, or `<source-url>#name@^1.2`.
@@ -181,6 +187,22 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Verb::New { r#ref } => {
+            // An empty directory is the common case, so make it work rather
+            // than sending someone to run init first.
+            if !dir.join(deployment::CONFIG_FILE).exists() {
+                Deployment::init(&dir)?;
+            }
+            let mut d = Deployment::open(&dir)?;
+            let r: Ref = r#ref.parse()?;
+            for line in ops::new_from_template(&mut d, &r)? {
+                println!("{line}");
+            }
+            println!();
+            println!("These files are yours now — edit them. To run it:");
+            println!();
+            println!("  drt run --config app.json");
+        }
         Verb::Add {
             r#ref,
             with_host,
@@ -224,10 +246,14 @@ fn main() -> Result<()> {
                     println!("  faces: {:?}  targets: {:?}", e.faces, e.targets);
                     println!(
                         "  {}",
-                        match &e.code_set {
-                            Some(_) if e.runnable => "a program: dollup add it, then run it",
-                            Some(_) => "a library: other packages require it",
-                            None => "no guest code",
+                        if e.template {
+                            "a starter template: dollup new copies it, then it is yours"
+                        } else {
+                            match &e.code_set {
+                                Some(_) if e.runnable => "a program: dollup add it, then run it",
+                                Some(_) => "a library: other packages require it",
+                                None => "no guest code",
+                            }
                         }
                     );
                     println!("  package: {}", e.package_id);
@@ -255,13 +281,10 @@ fn main() -> Result<()> {
                                 );
                             }
                             if !m.requires.connectors.is_empty() {
-                                let list: Vec<String> = m
-                                    .requires
-                                    .connectors
-                                    .iter()
-                                    .map(|(n, v)| format!("{n} {v}"))
-                                    .collect();
-                                println!("  requires connectors: {}", list.join(", "));
+                                println!(
+                                    "  requires connectors: {}",
+                                    m.requires.connectors.names().join(", ")
+                                );
                             }
                         }
                     }

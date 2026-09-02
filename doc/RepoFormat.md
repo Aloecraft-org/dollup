@@ -121,6 +121,30 @@ Any subset is legal. Three combinations are worth naming:
 - **all three** — a whole capability, both sides. The SocketCAN adapter, the
   ThreeJS binding. §6 governs it.
 
+### 4b. Templates: the one shape that may carry config
+
+A **template** (`"template": true`) is a starting point rather than a
+dependency. `dollup new` copies its files into the app and does **not** lock
+them; `dollup add` refuses it by name, and each verb points at the other.
+
+The distinction is not cosmetic. A locked file you edit is a `verify`
+failure, and a template is precisely the package you are meant to edit — so
+tracking one would make the tool complain about the thing it told you to do.
+
+It also settles something the rest of the format cannot. A drt app is a
+config plus a program, and dollup never writes config, so `add` can only
+ever deliver half an app. A template delivers both, and the doctrine holds
+exactly: **copying a file into a directory you own is not installing config
+into a running app.** Nothing is applied, nothing is merged, nothing is
+re-read later — you are handed a file and it is yours from that moment.
+A template's *dependencies* are ordinary packages and are added and locked
+as usual, because those you did not write and are not editing.
+
+This is also why examples do not belong in a repo but templates do. An
+example teaches by the contrast between two configs and the prose around
+them; strip the README and the lesson is gone. A template is the artifact
+you keep after the lesson.
+
 ### 4a. Two hashes, because a package is a distribution unit and not a pinning unit
 
 Bundling three faces in one package collides with §9 unless one thing is
