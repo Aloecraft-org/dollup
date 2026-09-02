@@ -34,7 +34,7 @@ than dollup itself.
 | crate | what |
 |---|---|
 | [`crates/dollup-format`](crates/dollup-format) | The formats: manifest (three faces), repo index, lockfile, sources/refs, identity hashing, index signing. Pure types + bytes; no IO, no network. |
-| [`crates/dollup`](crates/dollup) | The binary: deployment, store, fetch (four schemes), and the verbs. |
+| [`crates/dollup`](crates/dollup) | The binary: the app directory, store, fetch (four schemes), and the verbs. |
 
 ## A five-minute life
 
