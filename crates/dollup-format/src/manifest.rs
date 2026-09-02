@@ -118,7 +118,53 @@ pub struct Requires {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diluvium: Option<semver::VersionReq>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dv_abi: Option<semver::VersionReq>,
+    pub dv_abi: Option<AbiReq>,
+}
+
+/// Which `DV_ABI_VERSION` a package accepts. DRT's ABI version is an
+/// **integer** — `drt buildinfo` reports `dv_abi: 1` — so this is an integer
+/// range and not a semver requirement: a package declaring `">=1, <2"` would
+/// be describing a version scheme that does not exist.
+///
+/// Spelled `"dv_abi": 1` for exactly one, or `{"min": 1, "max": 2}` for a
+/// range whose `max` is inclusive and may be omitted for open-ended.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AbiReq {
+    Exact(u32),
+    Range {
+        min: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
+    },
+}
+
+impl AbiReq {
+    /// Whether a host speaking `abi` satisfies this package.
+    pub fn accepts(&self, abi: u32) -> bool {
+        match self {
+            AbiReq::Exact(v) => *v == abi,
+            AbiReq::Range { min, max } => abi >= *min && max.is_none_or(|m| abi <= m),
+        }
+    }
+}
+
+#[cfg(test)]
+mod abi_tests {
+    use super::AbiReq;
+
+    #[test]
+    fn abi_requirements_are_integer_ranges() {
+        // The shapes a manifest may write, parsed as a manifest would.
+        let exact: AbiReq = serde_json::from_str("1").unwrap();
+        assert!(exact.accepts(1) && !exact.accepts(2));
+
+        let bounded: AbiReq = serde_json::from_str(r#"{"min":1,"max":2}"#).unwrap();
+        assert!(bounded.accepts(1) && bounded.accepts(2) && !bounded.accepts(3));
+
+        let open: AbiReq = serde_json::from_str(r#"{"min":2}"#).unwrap();
+        assert!(!open.accepts(1) && open.accepts(9));
+    }
 }
 
 impl Requires {

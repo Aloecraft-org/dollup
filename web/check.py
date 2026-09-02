@@ -19,7 +19,7 @@ import sys
 # re-typeset them; rewriting them is a different job with a different review.
 ANCHOR_PHRASES = [
     "Install",
-    "deployment",
+    "app",
     "Nothing executes on install",
     "dollup add",
     "dollup source add",

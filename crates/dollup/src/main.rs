@@ -20,17 +20,17 @@ use deployment::Deployment;
 #[derive(Parser)]
 #[command(name = "dollup", version, about)]
 struct Cli {
-    /// The deployment directory (default: the current directory). Nothing
-    /// is ever implicitly global.
-    #[arg(long, global = true)]
-    deployment: Option<PathBuf>,
+    /// The app directory (default: the current directory). Nothing is ever
+    /// implicitly global.
+    #[arg(long, global = true, visible_alias = "deployment")]
+    app: Option<PathBuf>,
     #[command(subcommand)]
     verb: Verb,
 }
 
 #[derive(Subcommand)]
 enum Verb {
-    /// Scaffold a deployment: config, empty lockfile, code root.
+    /// Start an app here: config, empty lockfile, code root.
     Init,
     /// Fetch a package (and its dependencies), lock, populate. Inert.
     Add {
@@ -152,7 +152,7 @@ const STD_REPO_KEY: Option<&str> = None;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let dir = cli.deployment.unwrap_or_else(|| PathBuf::from("."));
+    let dir = cli.app.unwrap_or_else(|| PathBuf::from("."));
     match cli.verb {
         Verb::Init => {
             let mut d = Deployment::init(&dir)?;
@@ -161,7 +161,7 @@ fn main() -> Result<()> {
             // key exists, scaffold it in and hand them a command that works;
             // where it does not, still hand them commands rather than a file
             // to go edit.
-            println!("Created a deployment in {}", d.dir.display());
+            println!("Created an app in {}", d.dir.display());
             println!();
             match STD_REPO_KEY {
                 Some(key) => {

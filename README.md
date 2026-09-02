@@ -4,9 +4,10 @@ Install [Diluvium](https://github.com/Aloecraft-org/diluvium) programs and
 the capabilities they run on, plus move hibernated instances between
 machines.
 
-dollup fetches programs into a **deployment** — one directory holding the
-code, the sources it came from, and a lockfile pinning every version and
-hash, so the same deployment rebuilds byte for byte anywhere. Packages are
+dollup fetches programs into an **app** — one directory holding the code,
+the sources it came from, and a lockfile pinning every version and hash, so
+the same app rebuilds byte for byte anywhere. (A drt app is a config plus a
+program; dollup brings the program half and never writes the config.) Packages are
 named by the hash of their contents and listed in an index the publisher
 signs, which is what lets a mirror, a git remote and an offline copy be the
 same artifact rather than three you have to trust separately.
@@ -52,7 +53,7 @@ dollup repo keygen --out repo.key    # repo.key (private, 0600) + repo.key.pub
 dollup repo sign ./my-repo --key-file repo.key
 dollup repo blobs ./my-repo          # optional: projection for a static mirror
 
-# Consumer side: a deployment is a directory.
+# Consumer side: an app is a directory.
 dollup init
 $EDITOR dollup.json                  # add sources; pin the publisher's public key
 dollup add telemetry@^1              # fetch, hash-check, lock, populate code/

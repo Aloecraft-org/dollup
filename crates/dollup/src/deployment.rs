@@ -45,7 +45,7 @@ impl Deployment {
         let config: Config =
             serde_json::from_slice(&fs::read(&config_path).with_context(|| {
                 format!(
-                    "{} — not a deployment (run `dollup init`?)",
+                    "no app here yet — {} does not exist.\n\n  start one:  dollup init",
                     config_path.display()
                 )
             })?)
