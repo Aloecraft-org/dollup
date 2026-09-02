@@ -33,48 +33,26 @@ done
     echo "  mint one:  $dollup repo keygen --out $key_file" >&2
     exit 2
 }
-# keygen --out writes `<prefix without extension>.pub`; a prefix with no
-# extension gets `<prefix>.pub`. Accept either, and say which is missing.
-pub_file="${key_file%.*}.pub"
-[ -r "$pub_file" ] || pub_file="$key_file.pub"
-[ -r "$pub_file" ] || {
-    echo "cannot find the public key beside $key_file" >&2
-    echo "  looked for: ${key_file%.*}.pub and $key_file.pub" >&2
-    exit 2
-}
-pubkey="$(tr -d '\n' < "$pub_file")"
+# The public key is derived from the private one rather than hunted for
+# beside it -- `${key%.*}.pub` then `$key.pub` then an error naming both was
+# guesswork about a filename standing in for a fact the key itself carries,
+# and the two could drift.
+pubkey="$("$dollup" repo pubkey --key-file "$key_file")"
 
-[ -x "$dollup" ] || { echo "no dollup binary at $dollup (cargo build --release)" >&2; exit 2; }
+echo "==> publishing (seal, index, sign, blobs, and resolve the result)"
+# One verb, because this sequence is the same in every repo that publishes:
+# `dollup repo publish` seals every package, indexes, signs, projects blobs,
+# and then RESOLVES the tree it produced in a throwaway deployment before
+# calling it publishable. What used to be forty lines here, including the
+# hunt for a .pub file beside the key -- the public half is derived from the
+# private one now, so the two cannot drift.
+"$dollup" repo publish "$src" --key-file "$key_file" --stage "$stage/std-repo"
 
-echo "==> sealing packages"
-# Sealing is idempotent; running it here means a hand-edited file can never
-# ship with a stale hash. `index` re-hashes independently regardless.
-for pkg in "$src"/packages/*/*/; do
-    [ -f "$pkg/manifest.json" ] || continue
-    "$dollup" repo seal "$pkg" | head -1
-done
-
-echo "==> indexing"
-"$dollup" repo index "$src"
-
-echo "==> signing"
-"$dollup" repo sign "$src" --key-file "$key_file"
-
-echo "==> projecting blobs"
-# The tree is canonical and blobs/ is a projection of it, so rebuild rather
-# than accumulate: a blob left over from a deleted package would be served
-# forever under a name nothing indexes.
-rm -rf "$src/blobs"
-"$dollup" repo blobs "$src"
-
-echo "==> staging into $stage"
-rm -rf "$stage"
-mkdir -p "$stage/std-repo"
+echo "==> staging the landing page beside it"
+# `repo publish --stage` wrote the repo itself; the site is this repo's own
+# addition and is not part of the format.
 cp -r "$web"/. "$stage"/
 rm -f "$stage/README.md"
-for item in index.json index.json.sig packages blobs; do
-    [ -e "$src/$item" ] && cp -r "$src/$item" "$stage/std-repo/"
-done
 
 # Stamp the real public key into the page, so what a reader pins and what
 # the repo is signed with cannot drift apart.
@@ -84,21 +62,6 @@ if grep -rq "__DOLLUP_STD_PUBKEY__" "$stage"; then
     done
     echo "    stamped $pubkey"
 fi
-
-echo "==> verifying the staged repo resolves"
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-(
-    cd "$tmp"
-    "$dollup" init >/dev/null
-    "$dollup" source add "file://$stage/std-repo" --key "$pubkey" >/dev/null
-    # Every package in the tree, not a chosen one: the point is that the
-    # published repo resolves, all of it.
-    for pkg in "$src"/packages/*/; do
-        "$dollup" add "$(basename "$pkg")" >/dev/null
-    done
-    "$dollup" verify
-)
 
 if [ "$deploy" = 1 ]; then
     echo "==> deploying to $target"

@@ -35,13 +35,32 @@ fn default_code_root() -> PathBuf {
 
 pub struct Deployment {
     pub dir: PathBuf,
+    /// Where the config was actually read from, so `save` writes back to
+    /// the same file rather than to a `dollup.json` the caller never named.
+    pub config_path: PathBuf,
     pub config: Config,
     pub lock: Lockfile,
 }
 
 impl Deployment {
-    pub fn open(dir: &Path) -> Result<Deployment> {
-        let config_path = dir.join(CONFIG_FILE);
+    /// Which config file a run uses: the one the caller resolved, or
+    /// `<deployment>/dollup.json`.
+    ///
+    /// The caller resolves `--config` over `DOLLUP_CONFIG` ([`from_env`]),
+    /// so this stays a pure function and the precedence is testable
+    /// without touching process environment. Three ways and no more — no
+    /// home directory, no XDG lookup, no per-user state, nothing
+    /// materialized on a first run. A tool that writes a file so it can
+    /// read it back has not avoided depending on the file.
+    pub fn config_path_for(dir: &Path, explicit: Option<&Path>) -> PathBuf {
+        match explicit {
+            Some(path) => path.to_path_buf(),
+            None => dir.join(CONFIG_FILE),
+        }
+    }
+
+    pub fn open(dir: &Path, explicit: Option<&Path>) -> Result<Deployment> {
+        let config_path = Deployment::config_path_for(dir, explicit);
         let config: Config =
             serde_json::from_slice(&fs::read(&config_path).with_context(|| {
                 format!(
@@ -59,6 +78,7 @@ impl Deployment {
         };
         Ok(Deployment {
             dir: dir.to_path_buf(),
+            config_path,
             config,
             lock,
         })
@@ -68,8 +88,8 @@ impl Deployment {
     /// real key; until the standard repo is signed and live, `init` writes
     /// an empty source list rather than a route that does not resolve or a
     /// key that does not exist.
-    pub fn init(dir: &Path) -> Result<Deployment> {
-        let config_path = dir.join(CONFIG_FILE);
+    pub fn init(dir: &Path, explicit: Option<&Path>) -> Result<Deployment> {
+        let config_path = Deployment::config_path_for(dir, explicit);
         if config_path.exists() {
             bail!("{} already exists", config_path.display());
         }
@@ -81,6 +101,7 @@ impl Deployment {
         };
         let deployment = Deployment {
             dir: dir.to_path_buf(),
+            config_path,
             config,
             lock: Lockfile::default(),
         };
@@ -90,7 +111,7 @@ impl Deployment {
     }
 
     pub fn save(&self) -> Result<()> {
-        write_json(&self.dir.join(CONFIG_FILE), &self.config)?;
+        write_json(&self.config_path, &self.config)?;
         write_json(&self.dir.join(LOCK_FILE), &self.lock)
     }
 
@@ -103,8 +124,45 @@ impl Deployment {
     }
 }
 
+/// `DOLLUP_CONFIG`, if it is set to something. An empty value is not a
+/// path, and treating it as one would point every verb at a directory.
+pub fn from_env() -> Option<PathBuf> {
+    match std::env::var_os("DOLLUP_CONFIG") {
+        Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
+        _ => None,
+    }
+}
+
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
     fs::write(path, bytes).with_context(|| format!("writing {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_default_config_is_beside_the_deployment() {
+        assert_eq!(
+            Deployment::config_path_for(Path::new("/srv/app"), None),
+            PathBuf::from("/srv/app/dollup.json")
+        );
+    }
+
+    #[test]
+    fn an_explicit_path_wins_and_is_taken_verbatim() {
+        // Not joined onto the deployment dir: `-c` names a file, and a
+        // relative one is relative to the caller's cwd like every other
+        // path a shell hands over.
+        assert_eq!(
+            Deployment::config_path_for(Path::new("/srv/app"), Some(Path::new("/etc/d.json"))),
+            PathBuf::from("/etc/d.json")
+        );
+        assert_eq!(
+            Deployment::config_path_for(Path::new("/srv/app"), Some(Path::new("other.json"))),
+            PathBuf::from("other.json")
+        );
+    }
 }

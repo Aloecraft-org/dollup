@@ -42,6 +42,26 @@ pub fn keygen() -> (String, String) {
     )
 }
 
+/// The public key that belongs to a spelled private key.
+///
+/// Publishing scripts have been hunting for a `.pub` file *beside* the
+/// private key — `${key%.*}.pub`, then `$key.pub`, then an error naming
+/// both — which is guesswork about a filename standing in for a fact the
+/// key itself carries. Worse, the two can drift: sign with one key, pin the
+/// public half of another, and the repo you just signed is one you cannot
+/// add. Derived, they cannot.
+pub fn public_key_of(private_key: &str) -> Result<String, SignError> {
+    let bytes = decode(private_key, private_key)?;
+    let bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| SignError::Bytes("private key must be 32 bytes".into()))?;
+    let key = SigningKey::from_bytes(&bytes);
+    Ok(format!(
+        "{PREFIX}{}",
+        B64.encode(key.verifying_key().to_bytes())
+    ))
+}
+
 /// Sign index bytes with a spelled private key; returns the spelled
 /// signature — the entire content of `index.json.sig`.
 pub fn sign(private_key: &str, index_bytes: &[u8]) -> Result<String, SignError> {
@@ -103,5 +123,24 @@ mod tests {
             verify(&[other, public], &sig, b"index bytes").is_ok(),
             "any-of"
         );
+    }
+}
+
+#[cfg(test)]
+mod derive_tests {
+    use super::*;
+
+    #[test]
+    fn the_derived_public_key_is_the_one_keygen_produced() {
+        let (private, public) = keygen();
+        assert_eq!(public_key_of(&private).unwrap(), public);
+    }
+
+    #[test]
+    fn a_derived_key_verifies_what_its_private_half_signed() {
+        let (private, _) = keygen();
+        let derived = public_key_of(&private).unwrap();
+        let sig = sign(&private, b"index bytes").unwrap();
+        assert!(verify(std::slice::from_ref(&derived), &sig, b"index bytes").is_ok());
     }
 }

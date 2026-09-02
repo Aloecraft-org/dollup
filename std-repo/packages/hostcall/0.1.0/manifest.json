@@ -1,0 +1,13 @@
+{
+  "name": "hostcall",
+  "version": "0.1.0",
+  "guest": {
+    "modules": {
+      "hostcall": "guest/hostcall.dlua"
+    },
+    "source_only": true
+  },
+  "files": {
+    "guest/hostcall.dlua": "sha256:b2a1e65aa72b46c7680287cdb96f13a73a7eda4371620b1be6f977b6263600b2"
+  }
+}

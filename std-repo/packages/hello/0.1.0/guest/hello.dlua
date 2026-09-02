@@ -1,0 +1,28 @@
+-- What a deployment looks like from inside a program.
+--
+-- Every call below goes through the `host` library, which the runtime
+-- provides: it owns the `host/calls`/`host/replies` queue pair, allocates
+-- tokens, correlates replies, and turns a non-ok status into an error with
+-- the connector's own sentence in it. Nothing here is privileged --
+-- whether an ask succeeds is decided entirely by what the config granted.
+--
+-- The `hostcall` package beside this one is the same discipline written by
+-- hand. Read that one to see the substrate; write this one.
+
+-- The one nondeterminism every program eventually wants. It arrives as a
+-- message, which is why a replay could replay the same moment. It is
+-- `host.time()` and not `time.now()` because a clock is a capability, not
+-- arithmetic; `time` is the pure calendar library.
+print("time:      " .. host.time())
+
+-- A file inside the directory the host granted. The config named the
+-- directory; this program names the file. Neither knows the other's half.
+-- `try_read` returns the status rather than raising it, because a denial
+-- is an ordinary answer here.
+local note, status, detail = host.fs.try_read("note.txt")
+print("fs/read:   " .. status .. " " .. tostring(detail or note))
+
+-- A family the host never wired. Answered, not dropped: every drained
+-- request gets a reply, and "denied" is one.
+local _, sql_status, sql_detail = host.try("sql/query", { sql = "select 1" })
+print("sql/query: " .. sql_status .. " " .. tostring(sql_detail))

@@ -34,7 +34,7 @@ const MAX_FETCH: u64 = 256 * 1024 * 1024;
 pub fn fetch(url: &str) -> Result<Fetched> {
     match Scheme::of(url)? {
         Scheme::Plain(Transport::File) => Ok(Fetched {
-            kind: Kind::Dir(file_path(url)?, None),
+            kind: Kind::Dir(existing_dir(file_path(url)?)?, None),
             commit: None,
         }),
         Scheme::Plain(Transport::Https) => Ok(Fetched {
@@ -94,7 +94,7 @@ impl Fetched {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(e.into()),
             },
-            Kind::Http(base) => match ureq::get(&format!("{base}/{rel}")).call() {
+            Kind::Http(base) => match crate::http::agent().get(&format!("{base}/{rel}")).call() {
                 Ok(resp) => {
                     let mut bytes = vec![];
                     resp.into_reader().take(MAX_FETCH).read_to_end(&mut bytes)?;
@@ -107,13 +107,47 @@ impl Fetched {
     }
 
     pub fn index_bytes(&self) -> Result<Vec<u8>> {
-        self.read(INDEX_FILE)?
-            .with_context(|| format!("source has no {INDEX_FILE} — not a dollup repo"))
+        // Name the place. "not a dollup repo" is true of a directory that
+        // is not one AND of a path that is not there at all, and those have
+        // different fixes -- `existing_dir` separates the second out before
+        // this can be reached, so what lands here really is a directory
+        // missing its index.
+        self.read(INDEX_FILE)?.with_context(|| match &self.kind {
+            Kind::Dir(root, _) => format!(
+                "{} has no {INDEX_FILE} — it is a directory, but not a dollup repo. \
+                 A publisher makes one with `dollup repo index <dir>`.",
+                root.display()
+            ),
+            Kind::Http(base) => format!(
+                "{base}/{INDEX_FILE} is not there — that URL is reachable but is not a dollup repo"
+            ),
+        })
     }
 
     pub fn sig_bytes(&self) -> Result<Option<Vec<u8>>> {
         self.read(SIG_FILE)
     }
+}
+
+/// A `file://` source that is not there is the single most likely thing to
+/// go wrong with one, and it used to answer "source has no index.json —
+/// not a dollup repo": true, unhelpful, and pointing at the wrong fix. Say
+/// which path, and which of the two problems it is.
+fn existing_dir(path: PathBuf) -> Result<PathBuf> {
+    if !path.exists() {
+        bail!(
+            "{} does not exist — a file:// source names a directory on this machine",
+            path.display()
+        );
+    }
+    if !path.is_dir() {
+        bail!(
+            "{} is a file, not a directory — a file:// source names the repo directory \
+             (for an archive, the scheme is `zip+file://`)",
+            path.display()
+        );
+    }
+    Ok(path)
 }
 
 fn file_path(url: &str) -> Result<PathBuf> {
@@ -123,7 +157,8 @@ fn file_path(url: &str) -> Result<PathBuf> {
 }
 
 fn http_get(url: &str) -> Result<Vec<u8>> {
-    let resp = ureq::get(url)
+    let resp = crate::http::agent()
+        .get(url)
         .call()
         .with_context(|| format!("GET {url}"))?;
     let mut bytes = vec![];

@@ -29,6 +29,25 @@ than dollup itself.
 | [`doc/CodeResolution.md`](doc/CodeResolution.md) | The ask to DRT: the code root, `Program` growth, admission checks — staged so nothing blocks DRT's milestone |
 | [`THREAT-NOTES.md`](THREAT-NOTES.md) | What dollup checks and deliberately does not |
 
+## Installing
+
+```sh
+curl -fsSL https://github.com/Aloecraft-org/dollup/releases/latest/download/install.sh | sh
+```
+
+Or take the binary straight from
+[Releases](https://github.com/Aloecraft-org/dollup/releases) — every one
+carries `SHA256SUMS.txt` and a `BUILDINFO.txt` naming the commit it was built
+from. `DOLLUP_VERSION=vX.Y.Z` pins a release, `DOLLUP_PREFIX=` chooses the
+directory, and `DOLLUP_SOURCE=file:///mnt/xfer` installs with no network at
+all.
+
+From a checkout, when you want the tip rather than a release:
+
+```sh
+cargo build --release && export PATH="$PWD/target/release:$PATH"
+```
+
 ## Workspace
 
 | crate | what |
@@ -38,20 +57,39 @@ than dollup itself.
 
 ## A five-minute life
 
-`dollup` is not on `PATH` in a fresh checkout. Either prefix the commands
-below with `./target/release/`, or put it on `PATH` once:
+The commands below assume `dollup` is on your `PATH` (see *Installing*). It
+is not, in a fresh checkout — prefix them with `./target/release/` instead,
+which is also what every hint dollup prints will say back to you.
 
 ```sh
-cargo build --release && export PATH="$PWD/target/release:$PATH"
-# or, permanently:  cargo install --path crates/dollup
+# Get the runtime. One file, hash-checked, dropped where you are --
+# it installs nothing and needs no config.
+dollup get drt                          # ./drt, from the latest release
+dollup get drt --version v0.3.0 --slim  # a pin, and the size profile
+dollup get drt --from file:///mnt/xfer  # air-gapped: a directory, no network
+```
+
+There is a working repo in this checkout, so the consumer side below can
+be run against something real before you publish anything of your own:
+
+```sh
+dollup init
+dollup source add "file://$PWD/std-repo"   # an absolute path: file:// takes no relative one
+dollup add hello
+dollup get drt && ./drt run code/hello/guest/hello.dlua
 ```
 
 ```sh
 # Publisher side: a repo is a directory of packages.
-dollup repo index ./my-repo          # scan, validate, write index.json
-dollup repo keygen --out repo.key    # repo.key (private, 0600) + repo.key.pub
-dollup repo sign ./my-repo --key-file repo.key
-dollup repo blobs ./my-repo          # optional: projection for a static mirror
+dollup repo keygen --out repo.key    # once, ever
+dollup repo publish ./my-repo --key-file repo.key --stage .publish
+rsync -avz --delete .publish/ user@host:/var/www/my-repo/
+
+# `publish` is seal + index + sign + blobs, and then the step people skip:
+# it RESOLVES the tree it just produced — a throwaway deployment, the tree as
+# a file:// source, every package added, verified against the lock — before
+# calling it publishable. The four steps are also separately available
+# (`repo seal|index|sign|blobs`) when you want them one at a time.
 
 # Consumer side: an app is a directory.
 dollup init
@@ -75,6 +113,26 @@ materialized by default: `--with-host` admits wasm targets,
 `--with-host-native` additionally admits native ones — see
 [`THREAT-NOTES.md`](THREAT-NOTES.md) for why the second flag is loud.
 
+## Config
+
+Three ways to name the config, in this order, and no others:
+
+```sh
+dollup -c ./somewhere.json add telemetry   # an explicit file
+DOLLUP_CONFIG=./somewhere.json dollup add telemetry
+dollup add telemetry                       # <deployment>/dollup.json
+```
+
+**Nothing is read from your home directory, nothing is looked up in XDG,
+and nothing is written on a first run.** A tool that materializes a config
+so it can read it back has not avoided depending on the config; it has
+just stopped telling you. `dollup get` needs no config at all — it takes a
+URL or a default it prints every time.
+
+Writes go back to the file the config was read from, so `-c` is not a
+read-only view: `dollup -c x.json source add …` edits `x.json` and leaves
+no `dollup.json` behind.
+
 ## Building
 
 ```
@@ -86,7 +144,8 @@ binary that needs nothing else installed.
 
 ## Not yet built (tracked, not forgotten)
 
-`update` and `lock` verbs; dependency version unification beyond
+`update` and `lock` verbs; `get` for anything but `drt`;
+deploying (`repo publish` stages a tree and prints it; rsync is yours); dependency version unification beyond
 first-wins; the `https` scheme's blob-wise fetching (it currently reads
 tree paths); writable non-file remotes for snapshot push (the `--export-state`
 gate is already in front of them); consuming `drt-config` types once DRT
