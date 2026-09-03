@@ -20,19 +20,21 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-/// Where DRT releases live. The GitHub Releases path rather than the
-/// mirror, because as of 2026-08-31 the mirror carries no `drt` namespace
-/// and every URL under it 404s — including the install script that would
-/// have explained itself. This one resolves.
-pub const DEFAULT_DRT_CHANNEL: &str =
-    "https://github.com/Aloecraft-org/diluvium-drt/releases/latest/download";
+/// Where DRT releases live: the Aloecraft mirror. Every tag the DRT
+/// changelog marks for mirroring sits under its own directory, `latest/`
+/// tracks the changelog's `latest`, and each carries the release's own
+/// SHA256SUMS.txt beside the assets — the same names and sums as
+/// github.com/Aloecraft-org/diluvium-drt/releases, verified against them
+/// before the mirror publishes a tag at all. A tag the changelog no longer
+/// carries is gone from here; `--from` reaches GitHub directly for those.
+pub const DEFAULT_DRT_CHANNEL: &str = "https://diluvium.aloecraft.org/drt/latest";
 
-/// Same, for a pinned version.
+/// Same, for a pinned version: the mirror keeps tags as directories.
 fn channel_for(version: &str) -> String {
     if version == "latest" {
         DEFAULT_DRT_CHANNEL.to_string()
     } else {
-        format!("https://github.com/Aloecraft-org/diluvium-drt/releases/download/{version}")
+        format!("https://diluvium.aloecraft.org/drt/{version}")
     }
 }
 
