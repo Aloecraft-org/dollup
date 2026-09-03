@@ -191,7 +191,12 @@ ccc  BUILDINFO.txt
     #[test]
     fn a_pinned_version_and_latest_differ() {
         assert_eq!(channel_for("latest"), DEFAULT_DRT_CHANNEL);
-        assert!(channel_for("v0.3.0").ends_with("/download/v0.3.0"));
+        // The mirror keeps tags as directories under /drt/, which is where
+        // the deployment serves DRT's mirror (not /release/drt/).
+        let pinned = channel_for("v0.3.0");
+        assert!(pinned.ends_with("/drt/v0.3.0"), "{pinned}");
+        assert!(pinned.starts_with("https://diluvium.aloecraft.org/"), "{pinned}");
+        assert_ne!(pinned, DEFAULT_DRT_CHANNEL);
     }
 
     #[test]
