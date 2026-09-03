@@ -151,6 +151,14 @@ fn the_publicity_gate_comes_before_writability() {
     let tmp = tempfile::tempdir().unwrap();
     let dep = tmp.path().join("dep");
     run(dollup().arg("--deployment").arg(&dep).arg("init"));
+    // `init` scaffolds the public standard source now. This test is about a
+    // code-set NOTHING carries, so it must say so: with the public source in
+    // place, `pull` would (correctly) go looking there, and the failure it
+    // reports would be the network's rather than the hash's.
+    let cfg_path = dep.join("dollup.json");
+    let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
+    cfg["sources"] = serde_json::json!([]);
+    fs::write(&cfg_path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
     let blob = tmp.path().join("s.dvsnap");
     fs::write(&blob, b"state").unwrap();
 
