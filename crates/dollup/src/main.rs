@@ -221,10 +221,12 @@ enum RepoVerb {
 /// replace, and nothing resurrects it.
 const STD_REPO_URL: &str = "https://dollup.aloecraft.org/std-repo/";
 
-/// `None` until the standard repo's key is minted (std-repo/README.md).
-/// Filling this in is what turns a first run into two commands with nothing
-/// to read first, so it is worth doing the day the key exists.
-const STD_REPO_KEY: Option<&str> = None;
+/// The standard repo's signing key, minted 2026-09-03. This is what turns a
+/// first run into two commands with nothing to read first: `init` scaffolds
+/// the standard source with this key pinned, and `add hello` just works.
+/// It must match site/std-repo.pub, which `dollup repo publish` derives from
+/// the private key -- the page, the scaffold and the signature cannot drift.
+const STD_REPO_KEY: Option<&str> = Some("ed25519:RZNTaXSePtutwF3IWX49hppum4O8DdCiyx7BcYSmrRc=");
 
 /// How this process was invoked, for printing back in hints.
 ///
