@@ -354,6 +354,12 @@ pub fn publish(
 fn self_check(tree: &Path, pin: Option<&str>) -> Result<Vec<String>> {
     let scratch = tempfile::tempdir()?;
     let mut d = crate::deployment::Deployment::init(scratch.path(), None)?;
+    // The scaffold names the public standard source, and the claim being
+    // checked is about THIS tree alone -- so the self-check must not consult
+    // anything else. Left in place, `add` would open the public source
+    // first and a publish would need the network, and fail offline, to
+    // verify a directory sitting on disk.
+    d.config.sources.clear();
     let url = format!(
         "file://{}",
         fs::canonicalize(tree)
