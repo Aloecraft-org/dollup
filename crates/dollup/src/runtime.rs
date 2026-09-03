@@ -27,14 +27,14 @@ use anyhow::{bail, Context, Result};
 /// github.com/Aloecraft-org/diluvium-drt/releases, verified against them
 /// before the mirror publishes a tag at all. A tag the changelog no longer
 /// carries is gone from here; `--from` reaches GitHub directly for those.
-pub const DEFAULT_DRT_CHANNEL: &str = "https://diluvium.aloecraft.org/drt/latest";
+pub const DEFAULT_DRT_CHANNEL: &str = "https://software.aloecraft.org/releases/diluvium-drt/latest";
 
 /// Same, for a pinned version: the mirror keeps tags as directories.
 fn channel_for(version: &str) -> String {
     if version == "latest" {
         DEFAULT_DRT_CHANNEL.to_string()
     } else {
-        format!("https://diluvium.aloecraft.org/drt/{version}")
+        format!("https://software.aloecraft.org/releases/diluvium-drt/{version}")
     }
 }
 
