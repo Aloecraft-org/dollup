@@ -104,9 +104,10 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
     };
     if entries.is_empty() {
         bail!(
-            "nothing to install from: this deployment has no package sources.\n\
+            "nothing to install from: this app has no package sources.\n\
              \n  \
-             add one:  dollup source add <url> --key <key>"
+             add one:  {} source add <url> --key <key>",
+            crate::me()
         );
     }
 
@@ -445,7 +446,8 @@ pub fn new_from_template(deployment: &mut Deployment, r: &Ref) -> Result<Vec<Str
         bail!(
             "nothing to start from: this app has no package sources.\n\
              \n  \
-             add one:  dollup source add <url> --key <key>"
+             add one:  {} source add <url> --key <key>",
+            crate::me()
         );
     }
 

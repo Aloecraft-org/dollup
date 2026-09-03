@@ -222,7 +222,7 @@ const STD_REPO_KEY: Option<&str> = None;
 /// reached as `./dollup`, and every hint that says "run `dollup add`"
 /// answers `command not found`. Echoing argv[0] is always right: run it as
 /// `dollup`, `./dollup` or `../target/release/dollup` and the hints match.
-fn me() -> String {
+pub(crate) fn me() -> String {
     match std::env::args().next() {
         Some(a) if !a.is_empty() => a,
         _ => "dollup".to_string(),
