@@ -92,8 +92,7 @@ rsync -avz --delete .publish/ user@host:/var/www/my-repo/
 # (`repo seal|index|sign|blobs`) when you want them one at a time.
 
 # Consumer side: an app is a directory.
-dollup init
-$EDITOR dollup.json                  # add sources; pin the publisher's public key
+dollup init                          # scaffolds the standard source, key pinned
 dollup add telemetry@^1              # fetch, hash-check, lock, populate code/
 dollup verify                        # re-hash everything against the lock
 

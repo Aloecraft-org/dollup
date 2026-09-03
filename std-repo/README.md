@@ -111,6 +111,7 @@ site/std-repo.pub` is what CI runs to keep the three in step.
 same tree always projects to the same files. Committing it would store
 every byte twice.
 
-Until the real key is minted none of the three exist, the site build takes
-its unsigned branch, and `site/site.json` lists the package repo as
-`planned`. That is deliberate: status means today.
+The key was minted 2026-09-03 and all three are committed, so the site
+build takes its signed branch. `site/site.json` flips the package repo from
+`planned` to `live` only once the tree is actually served: status means
+today.

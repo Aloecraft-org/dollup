@@ -6,13 +6,13 @@ resolver = "2"
 members = ["crates/dollup-format", "crates/dollup"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.0.2"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/Aloecraft-org/dollup"
 
 [workspace.dependencies]
-dollup-format = { path = "crates/dollup-format", version = "0.1.0" }
+dollup-format = { path = "crates/dollup-format", version = "0.0.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
