@@ -36,17 +36,25 @@ once it is minted.
 
 ```sh
 cargo build --release
-./std-repo/publish.sh --key-file ~/.dollup/std-repo.key            # build + self-check
-./std-repo/publish.sh --key-file ~/.dollup/std-repo.key --deploy   # and rsync
+./std-repo/publish.sh --key-file ~/.dollup/std-repo.key
 ```
 
-`publish.sh` finds the binary itself (`target/release/dollup`, or
-`DOLLUP_BIN`), so it needs no `PATH` setup.
+`dollup repo publish` seals every package, indexes, signs, projects blobs,
+and **resolves the result in a throwaway app** before calling it
+publishable — all in place. The script then writes `site/std-repo.pub`,
+derived from the private key so the key the page shows is the key that
+signed, verifies the pair, and builds the site into `.publish/` as a
+preview. Then you commit:
 
-The script seals every package, indexes, signs, projects blobs, assembles
-the site into `.publish/`, stamps the real public key into the page, and
-then **resolves the staged repo in a throwaway deployment** before it will
-deploy anything. A repo that cannot be added is not published.
+```
+std-repo/index.json  std-repo/index.json.sig  site/std-repo.pub
+```
+
+**Nothing is deployed from here.** The site contract (`site/build.sh`)
+forbids a repo from pushing to a host; the deployment tooling stages the
+committed tree by the same build. The private key is the one thing
+`publish.sh` needs that the build does not, and keeping it out of the
+build is what makes the build hermetic.
 
 ## Adding a package
 
@@ -91,17 +99,18 @@ delete it and nothing resurrects it, replace the URL and you are self-hosted.
 
 ## What is committed, and why
 
-`index.json` **is** committed: a git or zipball source reads the tree
-directly, and without an index in it there is no repo to read. It is
-deterministic — hashes and paths only — so it diffs cleanly.
+`index.json` **and `index.json.sig`** are committed, along with
+`site/std-repo.pub`. A git or zipball source reads the tree directly, so the
+signature has to be in it — that is the whole point of the signature living
+in the tree rather than in a transport — and the site build is hermetic, so
+it can only ship what is committed. `dollup repo verify std-repo --key-file
+site/std-repo.pub` is what CI runs to keep the three in step.
 
-`blobs/` is **not**: it is a projection of the tree that `publish.sh`
-regenerates (and rebuilds from empty, so a blob from a deleted package is
-never left being served under a name nothing indexes). Committing it would
-store every byte twice.
+`blobs/` is **not** committed: it is a projection of the tree that
+`render.py` (and `dollup repo blobs`) regenerate, content-addressed, so the
+same tree always projects to the same files. Committing it would store
+every byte twice.
 
-`index.json.sig` is **not committed yet**, because it would have to be signed
-with a key that does not exist. Once the real key is minted, commit the
-signature alongside the index so that the git and zipball sources verify the
-same way the mirror does — that is the whole point of the signature living in
-the tree rather than in a transport.
+Until the real key is minted none of the three exist, the site build takes
+its unsigned branch, and `site/site.json` lists the package repo as
+`planned`. That is deliberate: status means today.

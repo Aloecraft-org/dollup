@@ -1,6 +1,6 @@
 # Design brief — dollup landing page
 
-Paste this, then paste `web/index.html` after it.
+Paste this, then paste `site/template/index.html` after it.
 
 ---
 

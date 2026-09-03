@@ -167,6 +167,17 @@ enum RepoVerb {
     },
     /// Generate the blobs/ projection for a static mirror.
     Blobs { dir: PathBuf },
+    /// Check that index.json.sig verifies over index.json under a public
+    /// key. What CI asks of a committed repo.
+    Verify {
+        dir: PathBuf,
+        /// The public key, `ed25519:<base64>`.
+        #[arg(long, conflicts_with = "key_file")]
+        key: Option<String>,
+        /// Read the public key from a file (a `.pub`, or site/std-repo.pub).
+        #[arg(long)]
+        key_file: Option<PathBuf>,
+    },
     /// Print the public key belonging to a private one. Derived, so it
     /// cannot drift from what actually signs a repo — which a `.pub` file
     /// sitting beside the key can.
@@ -565,6 +576,16 @@ fn main() -> Result<()> {
             }
             RepoVerb::Blobs { dir } => {
                 println!("projected {} blob(s)", repo::blobs(&dir)?);
+            }
+            RepoVerb::Verify { dir, key, key_file } => {
+                let key = match (key, key_file) {
+                    (Some(k), _) => k,
+                    (None, Some(path)) => std::fs::read_to_string(&path)
+                        .with_context(|| format!("reading {}", path.display()))?,
+                    (None, None) => anyhow::bail!("verify needs --key or --key-file"),
+                };
+                let by = repo::verify_index(&dir, &key)?;
+                println!("verified: {} is signed by {by}", dir.display());
             }
             RepoVerb::Pubkey { key_file } => {
                 let key = std::fs::read_to_string(&key_file)

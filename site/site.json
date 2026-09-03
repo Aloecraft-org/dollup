@@ -1,0 +1,12 @@
+{
+  "name":    "dollup",
+  "title":   "dollup",
+  "tagline": "Install Diluvium programs and the capabilities they run on, plus move hibernated instances between machines. Nothing executes during an install.",
+  "vhost":   "dollup.aloecraft.org",
+  "path":    "/",
+  "source":  "https://github.com/Aloecraft-org/dollup",
+  "channels": [
+    {"title": "Package repo", "url": "https://dollup.aloecraft.org/std-repo/", "status": "planned"},
+    {"title": "Releases",     "url": "https://github.com/Aloecraft-org/dollup/releases", "status": "live"}
+  ]
+}

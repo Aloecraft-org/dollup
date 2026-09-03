@@ -98,7 +98,7 @@ jobs:
       # around them.
       - run: test -s THREAT-NOTES.md
       - run: python3 ci/check-strings.py
-      - run: python3 web/check.py
+      - run: ./site/build.sh --check
       - run: cargo run -q -p dollup -- repo index std-repo
       - run: git diff --exit-code std-repo/index.json
 

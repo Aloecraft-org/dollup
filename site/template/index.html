@@ -210,13 +210,15 @@ footer { padding:70px 0 64px; }
   </div>
 </header>
 
+<!--IF:KEY-->
 <div class="wrap deck-wrap">
   <section class="deck">
     <div class="deck-head">
       <span class="label">Get started</span>
-      <span>3 commands</span>
+      <span>4 commands</span>
     </div>
     <div class="cmds">
+      <div class="cmd"><b>$</b><span>curl -fsSL https://dollup.aloecraft.org/install.sh | sh</span></div>
       <div class="cmd"><b>$</b><span>dollup init</span></div>
       <div class="cmd"><b>$</b><span>dollup source add https://dollup.aloecraft.org/std-repo/ \</span></div>
       <div class="cmd-cont">--key __DOLLUP_STD_PUBKEY__</div>
@@ -228,6 +230,25 @@ footer { padding:70px 0 64px; }
       directory to run it.</p>
   </section>
 </div>
+<!--ELSE:KEY-->
+<div class="wrap deck-wrap">
+  <section class="deck">
+    <div class="deck-head">
+      <span class="label">Get started</span>
+      <span>pre-release</span>
+    </div>
+    <div class="cmds">
+      <div class="cmd"><b>$</b><span>curl -fsSL https://dollup.aloecraft.org/install.sh | sh</span></div>
+      <div class="cmd"><b>$</b><span>dollup init</span></div>
+    </div>
+    <div class="rule"></div>
+    <p>That installs a verified binary and starts an app. <strong>The standard package repo is
+      not published yet</strong> — when it is, its signing key will appear on this page and
+      <code>dollup init</code> will point at it. Until then, releases are at
+      <a href="https://github.com/Aloecraft-org/dollup/releases">GitHub</a>.</p>
+  </section>
+</div>
+<!--END:KEY-->
 
 <main class="wrap">
   <section class="cards">
@@ -251,6 +272,7 @@ footer { padding:70px 0 64px; }
     </article>
   </section>
 
+<!--IF:KEY-->
   <section class="keypanel">
     <svg class="kp-ripple" width="560" height="560" viewBox="0 0 560 560" aria-hidden="true">
       <g fill="none" stroke="#4E82E8">
@@ -265,7 +287,17 @@ footer { padding:70px 0 64px; }
     <p>A verified index means a holder of this key signed exactly these bytes — authenticity,
       not freshness.</p>
   </section>
+<!--ELSE:KEY-->
+  <section class="keypanel">
+    <span class="label"><span class="dot" style="display:inline-block;margin-right:9px;background:var(--dim);box-shadow:none"></span>Standard repo</span>
+    <p>Not published yet. When the standard repo goes live its ed25519 signing key is shown
+      here, and you pin it in your source list — an ordinary line in a file you own. A
+      verified index means a holder of that key signed exactly these bytes: authenticity,
+      not freshness.</p>
+  </section>
+<!--END:KEY-->
 
+<!--IF:KEY-->
   <section class="pkgs-wrap">
     <span class="label">Published packages</span>
     <div class="pkgs">
@@ -278,6 +310,7 @@ footer { padding:70px 0 64px; }
     <p style="margin:16px 0 0;font-size:13.5px;color:var(--dim)">The index is a plain JSON file.
       Read it yourself: <a href="/std-repo/index.json">/std-repo/index.json</a>.</p>
   </section>
+<!--END:KEY-->
 </main>
 
 <footer class="wrap">
@@ -316,6 +349,7 @@ footer { padding:70px 0 64px; }
   // The package table reads the same index dollup reads, so it cannot drift
   // from what is actually published.
   var body = document.getElementById("pkgs");
+  if (!body) return;
   function row(cells) {
     var tr = document.createElement("tr");
     cells.forEach(function (c, i) {

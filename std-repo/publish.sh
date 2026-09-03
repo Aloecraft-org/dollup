@@ -1,28 +1,37 @@
 #!/usr/bin/env bash
-# Publish the standard repo and the landing page.
+# Sign and stage the standard repo. The publisher's tool, not the deployer's.
 #
-#   ./std-repo/publish.sh --key-file ~/.dollup/std-repo.key            # build only
-#   ./std-repo/publish.sh --key-file ~/.dollup/std-repo.key --deploy   # and rsync
+#   ./std-repo/publish.sh --key-file ~/.dollup/std-repo.key
 #
-# Build is local and offline: index, sign, project blobs, assemble the site
-# into a staging tree. Deploy is one rsync of that tree. Nothing here needs
-# to run on the server.
+# What it does, in order:
+#   1. `dollup repo publish` seals every package, indexes, signs, projects
+#      blobs, and resolves the result in a throwaway app before calling it
+#      publishable -- all IN PLACE in std-repo/.
+#   2. Writes site/std-repo.pub, derived from the private key, so the key
+#      the landing page shows and the key that signed the index cannot drift.
+#   3. Builds the site into .publish/ as a preview, by the same path the
+#      deployment tooling uses.
+#
+# Then you COMMIT: std-repo/index.json, std-repo/index.json.sig and
+# site/std-repo.pub. Deploying is not done here -- the site contract
+# (site/build.sh) forbids it, and the tooling that stages every Aloecraft
+# site picks up the committed tree from the repo. The private key is the
+# only thing this script needs that the build does not, which is the point.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 src="$repo_root/std-repo"
-web="$repo_root/web"
 stage="${DOLLUP_STAGE:-$repo_root/.publish}"
-target="${DOLLUP_TARGET:-cloud1:/var/www/dollup/}"
 dollup="${DOLLUP_BIN:-$repo_root/target/release/dollup}"
 key_file="${DOLLUP_KEY_FILE:-}"
-deploy=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --key-file) key_file="$2"; shift 2 ;;
-        --deploy)   deploy=1; shift ;;
-        --target)   target="$2"; shift 2 ;;
+        --deploy|--target)
+            echo "publish.sh no longer deploys: the site contract owns that. Commit the" >&2
+            echo "signed index and let the deployment tooling stage it." >&2
+            exit 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -33,39 +42,29 @@ done
     echo "  mint one:  $dollup repo keygen --out $key_file" >&2
     exit 2
 }
-# The public key is derived from the private one rather than hunted for
-# beside it -- `${key%.*}.pub` then `$key.pub` then an error naming both was
-# guesswork about a filename standing in for a fact the key itself carries,
-# and the two could drift.
-pubkey="$("$dollup" repo pubkey --key-file "$key_file")"
+[ -x "$dollup" ] || { echo "no dollup binary at $dollup (cargo build --release)" >&2; exit 2; }
 
-echo "==> publishing (seal, index, sign, blobs, and resolve the result)"
-# One verb, because this sequence is the same in every repo that publishes:
-# `dollup repo publish` seals every package, indexes, signs, projects blobs,
-# and then RESOLVES the tree it produced in a throwaway deployment before
-# calling it publishable. What used to be forty lines here, including the
-# hunt for a .pub file beside the key -- the public half is derived from the
-# private one now, so the two cannot drift.
-"$dollup" repo publish "$src" --key-file "$key_file" --stage "$stage/std-repo"
+echo "==> publishing in place (seal, index, sign, blobs, and resolve the result)"
+"$dollup" repo publish "$src" --key-file "$key_file"
 
-echo "==> staging the landing page beside it"
-# `repo publish --stage` wrote the repo itself; the site is this repo's own
-# addition and is not part of the format.
-cp -r "$web"/. "$stage"/
-rm -f "$stage/README.md"
+echo "==> recording the public key beside the site"
+# Derived from the private half rather than hunted for beside it: what the
+# page shows is what signed the index, by construction.
+"$dollup" repo pubkey --key-file "$key_file" > "$repo_root/site/std-repo.pub"
+cat "$repo_root/site/std-repo.pub"
 
-# Stamp the real public key into the page, so what a reader pins and what
-# the repo is signed with cannot drift apart.
-if grep -rq "__DOLLUP_STD_PUBKEY__" "$stage"; then
-    grep -rl "__DOLLUP_STD_PUBKEY__" "$stage" | while read -r f; do
-        sed -i.bak "s|__DOLLUP_STD_PUBKEY__|$pubkey|g" "$f" && rm -f "$f.bak"
-    done
-    echo "    stamped $pubkey"
-fi
+echo "==> verifying the committed pair"
+"$dollup" repo verify "$src" --key-file "$repo_root/site/std-repo.pub"
 
-if [ "$deploy" = 1 ]; then
-    echo "==> deploying to $target"
-    rsync -avz --delete "$stage"/ "$target"
-else
-    echo "built in $stage — pass --deploy to rsync to $target"
-fi
+echo "==> building the site as a preview"
+"$repo_root/site/build.sh" --out "$stage"
+
+cat <<EOF
+
+Now commit the signed repo and the public key:
+
+  git add std-repo/index.json std-repo/index.json.sig site/std-repo.pub std-repo/packages
+  git commit -m "Publish the standard repo"
+
+The deployment tooling stages the committed tree; nothing is pushed from here.
+EOF

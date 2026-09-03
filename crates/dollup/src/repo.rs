@@ -373,20 +373,39 @@ fn self_check(tree: &Path, pin: Option<&str>) -> Result<Vec<String>> {
     let parsed: RepoIndex = serde_json::from_slice(&index_bytes)?;
     let mut lines = vec![];
     // Every package in the tree, not a chosen one: the claim being checked
-    // is that the published repo resolves, all of it.
+    // is that the published repo resolves, all of it. A template is
+    // resolved the way a user would -- `new`, into an app of its own, since
+    // two templates may ship the same filenames and `add` refuses a
+    // starting point by design.
+    let mut template_apps = vec![];
     for name in parsed.packages.keys() {
         let r: Ref = name.parse()?;
-        lines.extend(crate::ops::add(
-            &mut d,
-            &r,
-            crate::ops::HostGates::default(),
-        )?);
+        let is_template = parsed
+            .select(name, None)
+            .is_some_and(|(_, entry)| entry.template);
+        if is_template {
+            let app = scratch.path().join(format!("template-{name}"));
+            let mut t = crate::deployment::Deployment::init(&app, None)?;
+            t.config.sources = d.config.sources.clone();
+            t.save()?;
+            lines.extend(crate::ops::new_from_template(&mut t, &r)?);
+            template_apps.push(t);
+        } else {
+            lines.extend(crate::ops::add(
+                &mut d,
+                &r,
+                crate::ops::HostGates::default(),
+            )?);
+        }
     }
     // `ops::verify` returns PROBLEMS; empty is clean. Extending the output
     // with them printed a broken repo's failures as though they were
     // successes and exited 0 — the self-check passing on precisely what it
     // exists to catch.
-    let problems = crate::ops::verify(&d)?;
+    let mut problems = crate::ops::verify(&d)?;
+    for t in &template_apps {
+        problems.extend(crate::ops::verify(t)?);
+    }
     if !problems.is_empty() {
         for p in &problems {
             eprintln!("{p}");
@@ -417,6 +436,22 @@ fn copy_into(from: &Path, to: &Path) -> Result<()> {
         fs::copy(from, to)?;
     }
     Ok(())
+}
+
+/// `dollup repo verify <dir> --key-file <pub>`: does the signature in the
+/// tree verify over the index in the tree, under this public key? The
+/// question a CI job asks of a committed repo, and the one a publisher asks
+/// before pushing -- a signature that does not match the index beside it is
+/// a repo nobody can add.
+pub fn verify_index(repo: &Path, key: &str) -> Result<String> {
+    let index_bytes = fs::read(repo.join(INDEX_FILE))
+        .with_context(|| format!("{} has no {INDEX_FILE}", repo.display()))?;
+    let sig = fs::read_to_string(repo.join(SIG_FILE))
+        .with_context(|| format!("{} has no {SIG_FILE} -- unsigned", repo.display()))?;
+    let key = key.trim().to_string();
+    let signed_by = sign::verify(std::slice::from_ref(&key), sig.trim(), &index_bytes)
+        .with_context(|| format!("{}: signature does not verify under {key}", repo.display()))?;
+    Ok(signed_by.to_string())
 }
 
 #[cfg(test)]
