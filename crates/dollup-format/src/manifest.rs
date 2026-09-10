@@ -146,15 +146,104 @@ pub struct Requires {
 ///
 /// Spelled `"dv_abi": 1` for exactly one, or `{"min": 1, "max": 2}` for a
 /// range whose `max` is inclusive and may be omitted for open-ended.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum AbiReq {
     Exact(u32),
     Range {
         min: u32,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<u32>,
     },
+}
+
+/// Deserialized by hand so the refusal reads like the others. The untagged
+/// derive answers `">=1, <2"` — the spelling a publisher reaches for first,
+/// and the one RepoFormat.md itself used to show — with `data did not match
+/// any variant of untagged enum AbiReq`, which names a Rust type and nothing
+/// anyone can act on. This cannot be a `ManifestError`: it fails while the
+/// manifest is being parsed, before `check` is handed anything, so the
+/// deserializer is the only place the guidance can live.
+impl<'de> Deserialize<'de> for AbiReq {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        d.deserialize_any(AbiReqVisitor)
+    }
+}
+
+struct AbiReqVisitor;
+
+impl<'de> serde::de::Visitor<'de> for AbiReqVisitor {
+    type Value = AbiReq;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(
+            "`requires.dv_abi` as an integer (`1`) or a range \
+             (`{\"min\": 1, \"max\": 2}`, `max` optional)",
+        )
+    }
+
+    fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<AbiReq, E> {
+        Err(E::custom(format!(
+            "requires.dv_abi '{v}' is not a version requirement: \
+             `DV_ABI_VERSION` is an integer — `drt buildinfo` reports \
+             `dv_abi: 1` — so write `1` for exactly that one, or \
+             `{{\"min\": 1, \"max\": 2}}` for a range, `max` optional for \
+             open-ended. A semver range here would describe a version scheme \
+             that does not exist"
+        )))
+    }
+
+    fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<AbiReq, E> {
+        u32::try_from(v)
+            .map(AbiReq::Exact)
+            .map_err(|_| out_of_range(v))
+    }
+
+    fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<AbiReq, E> {
+        u32::try_from(v)
+            .map(AbiReq::Exact)
+            .map_err(|_| out_of_range(v))
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<AbiReq, A::Error> {
+        use serde::de::Error;
+        let (mut min, mut max) = (None, None);
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "min" if min.is_some() => return Err(A::Error::duplicate_field("min")),
+                "max" if max.is_some() => return Err(A::Error::duplicate_field("max")),
+                "min" => min = Some(map.next_value()?),
+                // Absent and null both mean open-ended, as the derive took them.
+                "max" => max = Some(map.next_value::<Option<u32>>()?),
+                other => {
+                    return Err(A::Error::custom(format!(
+                        "requires.dv_abi has no field '{other}': a range is \
+                         `{{\"min\": 1, \"max\": 2}}`, `max` optional for \
+                         open-ended"
+                    )))
+                }
+            }
+        }
+        let Some(min) = min else {
+            return Err(A::Error::custom(
+                "requires.dv_abi names a range with no `min`: write \
+                 `{\"min\": 1}` for open-ended, or `1` for exactly one \
+                 version",
+            ));
+        };
+        Ok(AbiReq::Range {
+            min,
+            max: max.flatten(),
+        })
+    }
+}
+
+fn out_of_range<E: serde::de::Error, V: std::fmt::Display>(v: V) -> E {
+    E::custom(format!(
+        "requires.dv_abi '{v}' is out of range: `DV_ABI_VERSION` is a small \
+         non-negative integer, and `drt buildinfo` reports today's as \
+         `dv_abi: 1`"
+    ))
 }
 
 impl AbiReq {
@@ -182,6 +271,45 @@ mod abi_tests {
 
         let open: AbiReq = serde_json::from_str(r#"{"min":2}"#).unwrap();
         assert!(!open.accepts(1) && open.accepts(9));
+
+        // An omitted `max` and an explicit null are the same open-ended range,
+        // as the derive took them before this was written by hand.
+        let nulled: AbiReq = serde_json::from_str(r#"{"min":2,"max":null}"#).unwrap();
+        assert_eq!(nulled, open);
+    }
+
+    #[test]
+    fn the_written_shapes_survive_a_round_trip() {
+        // Identity is the hash of a manifest's canonical JSON, so what these
+        // deserialize from has to be what they serialize back to.
+        for src in ["1", r#"{"min":1}"#, r#"{"min":1,"max":2}"#] {
+            let req: AbiReq = serde_json::from_str(src).unwrap();
+            assert_eq!(serde_json::to_string(&req).unwrap(), src);
+        }
+    }
+
+    #[test]
+    fn a_misspelled_requirement_is_told_what_to_write() {
+        // `">=1, <2"` is the spelling a publisher reaches for, and the one the
+        // repo's own example documented; the untagged derive answered it with
+        // the name of a Rust type.
+        let err = serde_json::from_str::<AbiReq>(r#"">=1, <2""#)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("requires.dv_abi '>=1, <2'"), "{err}");
+        assert!(err.contains(r#"{"min": 1, "max": 2}"#), "{err}");
+        assert!(!err.contains("untagged"), "{err}");
+
+        // Every other way of missing names the field and the shape too.
+        for (src, want) in [
+            (r#"{"max":2}"#, "no `min`"),
+            (r#"{"min":1,"maximum":2}"#, "has no field 'maximum'"),
+            ("-1", "out of range"),
+            ("true", "`requires.dv_abi` as an integer"),
+        ] {
+            let err = serde_json::from_str::<AbiReq>(src).unwrap_err().to_string();
+            assert!(err.contains(want), "{src}: {err}");
+        }
     }
 }
 
