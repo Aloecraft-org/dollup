@@ -129,7 +129,10 @@ pub struct Requires {
     /// (`5.5.1_build12p1`) is not semver — the semver-shaped form puts the
     /// build in metadata, which precedence comparison *ignores*, so
     /// `>=5.5.1` cannot tell `build12` from `build12p1`. That is precisely
-    /// the distinction anyone asks this field about.
+    /// the distinction anyone asks this field about. A package that wants
+    /// "any core I can run against" wants `dv_abi` below, not this field:
+    /// that one is a range, and it is the one DRT compares at start
+    /// (CodeResolution.md §5). This is recorded for a human to read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diluvium: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -253,7 +256,12 @@ pub enum ManifestError {
          instead, as a list"
     )]
     ConnectorVersionsUncheckable(String),
-    #[error("requires.diluvium '{0}' is not a revision: expected the 40-hex git revision `drt buildinfo` reports")]
+    #[error(
+        "requires.diluvium '{0}' is not a revision: expected the 40-hex git \
+         revision `drt buildinfo` reports (e.g. 850e00d73220…). For \"any \
+         compatible core\" rather than one exact build, use `dv_abi` instead \
+         — `drt buildinfo` reports that too"
+    )]
     DiluviumNotARevision(String),
 }
 

@@ -483,4 +483,7 @@ fn uncheckable_requirements_are_refused_rather_than_ignored() {
     );
     let msg = fail(dollup().args(["repo", "index"]).arg(&repo));
     assert!(msg.contains("is not a revision"), "{msg}");
+    // And it names the field that does express "any compatible core", because
+    // wanting that — not a pin — is why a range gets written here.
+    assert!(msg.contains("dv_abi"), "{msg}");
 }
