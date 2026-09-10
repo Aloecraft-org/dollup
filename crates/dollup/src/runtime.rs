@@ -191,15 +191,23 @@ ccc  BUILDINFO.txt
     #[test]
     fn a_pinned_version_and_latest_differ() {
         assert_eq!(channel_for("latest"), DEFAULT_DRT_CHANNEL);
-        // The mirror keeps tags as directories under /drt/, which is where
-        // the deployment serves DRT's mirror (not /release/drt/).
+        // The mirror keeps tags as directories beside `latest/`, so a pin is
+        // that same base with the tag where `latest` was. Derived from the
+        // constant rather than spelled again: a mirror move that touched only
+        // the constant is what left this test asserting an address nothing
+        // served, and deriving it makes the two disagree loudly instead.
+        let base = DEFAULT_DRT_CHANNEL
+            .strip_suffix("latest")
+            .expect("the channel is the `latest` directory on the mirror");
         let pinned = channel_for("v0.3.0");
-        assert!(pinned.ends_with("/drt/v0.3.0"), "{pinned}");
-        assert!(
-            pinned.starts_with("https://diluvium.aloecraft.org/"),
-            "{pinned}"
-        );
+        assert_eq!(pinned, format!("{base}v0.3.0"));
         assert_ne!(pinned, DEFAULT_DRT_CHANNEL);
+        // Wherever it moves to, it is the Aloecraft mirror over TLS: the
+        // default download of a runtime binary is not a host to drift on.
+        assert!(
+            base.starts_with("https://") && base.contains("aloecraft.org/"),
+            "{base}"
+        );
     }
 
     #[test]
