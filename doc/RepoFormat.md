@@ -213,10 +213,10 @@ one envelope, which is §2's whole argument, so the faces stay together.
 
   "requires": {
     "capabilities": ["host:time"],
-    "connectors": { "time": ">=1, <2" },
+    "connectors": ["time"],
     "packages": { "json": "^1.2" },
-    "diluvium": ">=5.5.1",
-    "dv_abi": ">=1, <2"
+    "diluvium": "850e00d73220427be68ae8f909f83b06cb2095bd",
+    "dv_abi": { "min": 1, "max": 2 }
   },
 
   "files": { "guest/can.dlua": "sha256:…", "host/can.wasm": "sha256:…" }
@@ -249,6 +249,19 @@ Notes where the shape was chosen against an obvious alternative:
   browser module-with-glue from a native shared object.
 - **`requires.capabilities` still carries no scopes.** Unchanged and
   load-bearing: scopes stay host-side, the operator supplies them.
+- **Three `requires` fields refuse the version range a reader expects**, and
+  refuse it for one reason: a constraint nothing can evaluate is worse than
+  no constraint, because it reads as a check while admitting everything.
+  `connectors` is a list of names, since no host reports call-shape versions
+  yet. `diluvium` is the 40-hex git revision `drt buildinfo` reports, since
+  the released spelling (`5.5.1_build12p1`) is not semver and the
+  semver-shaped form puts the build in metadata, which precedence comparison
+  ignores — so `>=5.5.1` cannot tell `build12` from `build12p1`, the one
+  distinction anyone asks this field about. `dv_abi` is an integer or
+  `{"min", "max"}`, since `DV_ABI_VERSION` is an integer and a package
+  writing `">=1, <2"` would be describing a version scheme that does not
+  exist. **The field for "any core this package can run against" is
+  `dv_abi`**; `diluvium` pins one build and says nothing about any other.
 
 ## 6. Host faces: install stays inert, and here is why that still holds
 

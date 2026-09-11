@@ -483,4 +483,23 @@ fn uncheckable_requirements_are_refused_rather_than_ignored() {
     );
     let msg = fail(dollup().args(["repo", "index"]).arg(&repo));
     assert!(msg.contains("is not a revision"), "{msg}");
+    // And it names the field that does express "any compatible core", because
+    // wanting that — not a pin — is why a range gets written here.
+    assert!(msg.contains("dv_abi"), "{msg}");
+
+    // The field it points at refuses a range too, one step earlier — while the
+    // manifest is still being parsed — so check the guidance survives that far.
+    fs::remove_dir_all(repo.join("packages/verreq")).unwrap();
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "abireq", "version": "0.1.0",
+            "guest": { "main": "m", "modules": { "m": "m.dlua" } },
+            "requires": { "dv_abi": ">=1, <2" }
+        }),
+        &[("m.dlua", b"return {}")],
+    );
+    let msg = fail(dollup().args(["repo", "index"]).arg(&repo));
+    assert!(msg.contains(r#"{"min": 1, "max": 2}"#), "{msg}");
+    assert!(!msg.contains("untagged"), "{msg}");
 }

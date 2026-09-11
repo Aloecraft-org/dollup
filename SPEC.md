@@ -124,12 +124,24 @@ reasoning depends on. All declarative:
   only** (`host:kv`, not an implementation name), **no scopes** (scopes stay
   host-side; the operator supplies them; config never carries the package's
   filenames)
-- `connectors`: required connector names + call-shape version range (what
-  must exist in the host; see §6)
+- `connectors`: required connector names, as a list (what must exist in the
+  host; see §6). Names only: the call-shape range is a reserved shape, and
+  a manifest writing one is refused rather than admitted on a constraint no
+  host reports yet
 - `dependencies`: package name + version requirement (hashes land in the
   lock, not the manifest)
-- `diluvium`: minimum language version; `dv_abi`: accepted
-  `DV_ABI_VERSION` range
+- `diluvium`: the 40-hex git revision `drt buildinfo` reports — one build,
+  not a range: the released spelling (`5.5.1_build12p1`) is not semver, and
+  the semver-shaped form hides the build in metadata that precedence
+  comparison ignores. `dv_abi`: accepted `DV_ABI_VERSION` range, an integer
+  or `{"min", "max"}`, and **this is the field for "any core this package
+  can run against"** — `diluvium` pins one build and says nothing about any
+  other. Today dollup checks the *spelling* of both at publish and add and
+  compares neither: the ceiling, the connector registry and `DV_ABI_VERSION`
+  are facts only the running process holds, so the comparison is DRT's at
+  start (doc/CodeResolution.md §5). A package pinning a revision therefore
+  buys a record a human can check, not an admission check, and pays a
+  republish on every core bump — choose it knowing that.
 - `guest.source_only`: true unless the deployment opts out loudly. Compiled
   diluvium chunks are rejected at publish and install. There is no bytecode
   verifier; source-only is a mitigation, not a solution, and the format does
