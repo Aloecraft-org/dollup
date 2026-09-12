@@ -10,10 +10,16 @@ What is repository-specific is declared, not coded (doc/ALIGNMENT.md §3):
 `.technoproj`'s TECHNO_CHANGELOG names the compatibility facts this
 project records, the profile mappings, the tag rule, the version stamps
 and whether changelog.json is emitted. Bespoke invariants live in
-script/checks.py, which this calls when it exists. The engine itself is
-drt's script/changelog.py with its fact table lifted out into the
-declaration; the shared location is not decided yet, so this copy is
-vendored here and is replaced, not edited, when the shared one lands.
+script/checks.py, which this calls when it exists.
+
+The shared engine is Aloecraft-org/technoproj (`technoproj-changelog`,
+argument-for-argument the same CLI, reading the same declaration and the
+same YAML -- checked: it validates this tree and renders the same
+changelog.json). This copy stays until technoproj carries three things
+the release workflow needs: a dev tag (vX.Y.Z-dev.N) as a build of the
+newest entry, a SemVer-spelled prerelease version (0.2.0-rc.1) in
+`consistency`, and `buildinfo --tag`. Then `pip install` replaces it and
+nothing else here changes.
 
 Usage:
   script/changelog.py validate              schema and consistency checks
@@ -66,7 +72,9 @@ try:
 except ImportError:
     sys.exit("changelog.py: PyYAML is required (pip install pyyaml)")
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The tree being operated on: this file's parent's parent, or TECHNO_ROOT
+# the way technoproj reads it, so the two are invoked alike.
+ROOT = os.environ.get("TECHNO_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "CHANGELOG.yaml")
 MD = os.path.join(ROOT, "CHANGELOG.md")
 JSON = os.path.join(ROOT, "changelog.json")
@@ -109,7 +117,7 @@ def declaration():
     d.setdefault("facts", [])
     d.setdefault("mappings", [])
     d.setdefault("tag_rule", "exact")
-    d.setdefault("required", ["version", "status", "stable", "mirror", "summary"])
+    d.setdefault("required", ["version", "tag", "status", "stable", "mirror", "summary"])
     d.setdefault("latest_requires", ["stable", "mirror"])
     d.setdefault("emit_json", False)
     d.setdefault("stamps", [])
@@ -121,9 +129,11 @@ def declaration():
         sys.exit(".technoproj: tag_rule %r not one of %s"
                  % (d["tag_rule"], ", ".join(sorted(TAG_RULES))))
     for i, fact in enumerate(d["facts"]):
-        if not isinstance(fact, dict) or not fact.get("id") or \
-                not isinstance(fact.get("keys"), list) or not fact.get("fmt"):
-            sys.exit(".technoproj: facts[%d] needs id, keys and fmt" % i)
+        if not isinstance(fact, dict) or not isinstance(fact.get("keys"), list) \
+                or not fact["keys"] or not fact.get("fmt"):
+            sys.exit(".technoproj: facts[%d] needs keys and fmt" % i)
+        # technoproj's rule: a fact's slot is its id, or its first key.
+        fact.setdefault("id", fact["keys"][0])
     for i, m in enumerate(d["mappings"]):
         if not isinstance(m, dict) or not m.get("key") or not m.get("title"):
             sys.exit(".technoproj: mappings[%d] needs key and title" % i)

@@ -227,6 +227,24 @@ false`, `mirror: false`. What it means here:
 3. Whether `requires.features` will be checked at admission, so dollup
    knows whether to carry the field.
 
+**technoproj (the shared release tooling).** dollup's `.technoproj`
+declaration and `CHANGELOG.yaml` already validate under
+`technoproj-changelog` and render the same `changelog.json`; its
+`version.mk` is in dollup byte for byte. dollup keeps a vendored copy of
+the engine until the installed one carries what the release workflow
+needs, then switches by `pip install` with nothing else changing:
+1. A dev tag (`vX.Y.Z-dev.N`) as a build of the newest entry -- no entry
+   of its own, `prerelease=true`, `version=X.Y.Z-dev.N` -- in
+   `release-check` and `render md --tag` (ALIGNMENT §7).
+2. A SemVer-spelled prerelease version (`0.2.0-rc.1`) accepted by
+   `consistency`, with a `semver` stamp meaning the tag body, not the
+   base (ALIGNMENT §1, revision 3); today the grammar there is the
+   legacy `X.Y.ZrcN` only.
+3. `buildinfo --tag TAG`: the entry's declared facts as `key: value`
+   lines, so a workflow writes BUILDINFO.txt from the same tool that
+   renders the notes.
+4. A tag to pin: the README says `@v0.1.0` and no tag exists yet.
+
 **Library owners (the nine repos and discofetch-api).**
 1. In each lib repo: `manifest.json` as in §1 plus `"license":
    "Apache-2.0"` (the family license; `repo seal` and `repo index` refuse

@@ -270,11 +270,15 @@ binary that needs nothing else installed.
 
 The version and the release notes each have one source. `.technoproj`
 holds the version a human edits (`make version`, `make tag`, `make inc_pat`,
-`make set_pre kind=rc n=1`), and the changelog's `version`, `Cargo.toml`
+`make set_pre KIND=rc N=1`), and the changelog's `version`, `Cargo.toml`
 and `BUILDINFO.txt` all hold the tag body it prints — `0.1.0-rc.1` for the
 tag `v0.1.0-rc.1` — which CI checks. `CHANGELOG.yaml` holds the notes, and
 `script/changelog.py generate` writes `CHANGELOG.md` and `changelog.json`
-from it, which CI keeps in step (`make changelog-check`). The release
+from it, which CI keeps in step (`make changelog-check`). The tooling is
+[technoproj](https://github.com/Aloecraft-org/technoproj)'s: `script/version.mk`
+is its copy, placed by `technoproj sync`, and `script/changelog.py` is the
+same engine, vendored until the installed one carries dev tags, SemVer
+prerelease versions and the BUILDINFO facts. The release
 workflow is gated on that file: the tag must have an entry, `prerelease`
 derives from its `stable`, the release body is the entry rendered, and
 `BUILDINFO.txt` carries its compatibility facts beside the tag, version,
