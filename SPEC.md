@@ -285,7 +285,8 @@ rewrites what exists), `dollup new <name>` (a directory, and a root in it),
 — inert; a template is copied and never locked), `pull drt` (the runtime
 into the cache, `latest` resolved to a version), `deploy drt` (the cache
 into `.drt_root/drt`, by copy), `pin drt` (deploy and record the version in
-`project.json`; `--all` over every root on the box), `duplicate <path>`
+`project.json` — the release tag without its `v`, so a candidate `0.5.0rc9`
+is its own pin; `--all` over every root on the box), `duplicate <path>`
 (this root copied as a new root: fresh `root_id`, `duplicated_from`, the
 runtime's directories and `consent.json` left behind), `update`, `lock`,
 `ls`, `info <ref>`, `verify` (re-hash store against lock), `snapshot push

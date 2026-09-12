@@ -190,9 +190,13 @@ and never linked to it. `pull drt` fills the cache and touches no root —
 `latest` is resolved to the version the mirror names, never cached as a
 moving target — `deploy drt` copies the cache into the root, and `pin drt`
 deploys and records the version in `project.json`, so the pin and the
-binary agree; start refuses a mismatch by name. The pin is the version the
-binary reports (`0.4.1`, as `drt buildinfo` says it), and `v0.4.1` names
-the same release.
+binary agree; start refuses a mismatch by name. The pin is the release tag
+without its leading `v`: `0.4.1` for `v0.4.1`, and `0.5.0rc9` for the
+candidate `v0.5.0rc9`, which is its own release — the crate inside every
+candidate says `0.5.0`, so the pin is the tag, which drt stamps into the
+binary when it cuts one and compares the pin against. A root pinned to
+`0.5.0` refuses an rc9 binary, and `audit` says so in start's words, naming
+both versions when the cache can tell what the binary is.
 
 ```sh
 dollup pull drt                 # the cache, at the version latest names

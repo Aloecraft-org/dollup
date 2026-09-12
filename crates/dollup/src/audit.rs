@@ -206,10 +206,14 @@ fn read_root(root_dir: &Path) -> Result<(RootInputs, Vec<String>)> {
 // depth: the one check resolution cannot make — the binary, without running it
 
 struct BinaryCheck {
-    /// The pinned version, when the binary hashed to a build of it: what
-    /// resolution compares to the pin. Never a guess.
+    /// What the binary is, when its hash says so: the pinned version when
+    /// that release's sums vouch for it, else whichever cached release's
+    /// sums do. Resolution compares the pin to this, so a mismatch the
+    /// cache can name is refused in start's own words. Never a guess.
     version: Option<String>,
     line: String,
+    /// Audit's own blocker, for the one case resolution cannot see: a
+    /// binary the pinned release disowns and nothing cached can name.
     blocks: bool,
 }
 
@@ -232,39 +236,70 @@ fn check_binary(root_dir: &Path, pinned: Option<&str>) -> BinaryCheck {
             blocks: false,
         };
     };
-    let hex = dollup_format::hash_bytes(&bytes)
-        .0
-        .trim_start_matches("sha256:")
-        .to_string();
-    let (sums, from) = match sums_for(pinned) {
-        Ok(found) => found,
-        Err(e) => {
-            return BinaryCheck {
+    let hex = runtime::sha256_hex(&bytes);
+    // The pinned release first: its sums vouching for the binary is the
+    // whole check, and needs nothing else cached.
+    let disowned_by = match sums_for(pinned) {
+        Ok((sums, from)) => match runtime::asset_with_hash(&sums, &hex) {
+            Some(asset) => {
+                return BinaryCheck {
+                    version: Some(pinned.to_string()),
+                    line: format!(
+                        "drt: {pinned} pinned, {pinned} present (.drt_root/drt is {asset} by \
+                         sha256, per {from}; audit never executes it)"
+                    ),
+                    blocks: false,
+                }
+            }
+            None => Ok(from),
+        },
+        Err(e) => Err(e),
+    };
+    // Not vouched for by the pinned release, or its sums are out of reach.
+    // Every cached release is asked instead, because start's refusal names
+    // both versions — "the pinned drt is 0.5.0 and this binary is
+    // 0.5.0rc9" — and resolution says the same once told what is present.
+    // A candidate is its own release: a root pinned to `0.5.0` does not run
+    // the `0.5.0rc9` binary, and audit must not call that unverified.
+    match runtime::identify(&hex) {
+        Some((present, sums)) if present != pinned => BinaryCheck {
+            version: Some(present.clone()),
+            line: format!(
+                "drt: {pinned} pinned, but .drt_root/drt is not a {pinned} build: it is \
+                 {present} by sha256 (per the cached sums at {}); `dollup pin drt {present}` \
+                 moves the pin, `dollup deploy drt {pinned}` moves the binary",
+                sums.display()
+            ),
+            // Resolution blocks this one, in start's words.
+            blocks: false,
+        },
+        Some((_, sums)) => BinaryCheck {
+            version: Some(pinned.to_string()),
+            line: format!(
+                "drt: {pinned} pinned, {pinned} present (by sha256, per the cached sums at {}; \
+                 audit never executes it)",
+                sums.display()
+            ),
+            blocks: false,
+        },
+        None => match disowned_by {
+            Ok(from) => BinaryCheck {
+                version: None,
+                line: format!(
+                    "drt: {pinned} pinned, but .drt_root/drt is not a {pinned} build: its \
+                     sha256 {}… matches nothing in that release's SHA256SUMS.txt ({from}), and \
+                     no cached release names it",
+                    &hex[..12]
+                ),
+                blocks: true,
+            },
+            Err(e) => BinaryCheck {
                 version: None,
                 line: format!(
                     "drt: {pinned} pinned; the binary at .drt_root/drt is not verified — {e:#}"
                 ),
                 blocks: false,
-            }
-        }
-    };
-    match runtime::asset_with_hash(&sums, &hex) {
-        Some(asset) => BinaryCheck {
-            version: Some(pinned.to_string()),
-            line: format!(
-                "drt: {pinned} pinned, {pinned} present (.drt_root/drt is {asset} by sha256, \
-                 per {from}; audit never executes it)"
-            ),
-            blocks: false,
-        },
-        None => BinaryCheck {
-            version: None,
-            line: format!(
-                "drt: {pinned} pinned, but .drt_root/drt is not a {pinned} build: its sha256 \
-                 {}… matches nothing in that release's SHA256SUMS.txt ({from})",
-                &hex[..12]
-            ),
-            blocks: true,
+            },
         },
     }
 }
@@ -277,9 +312,9 @@ fn sums_for(pinned: &str) -> Result<(String, String)> {
             return Ok((text, format!("the cached sums at {}", cached.display())));
         }
     }
-    // The pin is what `drt buildinfo` reports; the mirror is keyed by tag,
-    // and the two differ by the `v`. A wrong guess fails by name below and
-    // the binary is reported unverified — it is never matched by mistake.
+    // The pin is the release tag without its `v`; the mirror is keyed by
+    // the tag. A wrong guess fails by name below and the binary is reported
+    // unverified — it is never matched by mistake.
     let tag = if pinned.starts_with('v') {
         pinned.to_string()
     } else {

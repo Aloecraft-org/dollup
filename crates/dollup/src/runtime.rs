@@ -62,10 +62,13 @@ pub(crate) fn asset_name(slim: bool) -> Result<String> {
 }
 
 /// A release as the mirror names it: the tag it is served under, and the
-/// version the binary reports, which is the tag without its `v`. The pin in
-/// `project.json` is the *version*, because that is what `drt buildinfo`
-/// says and what start compares it to; the cache is keyed by it for the
-/// same reason. `v0.4.1` and `0.4.1` name one release.
+/// version, which is the tag without its `v`. The pin in `project.json` is
+/// the *version*, because that is what drt compares its own stamped release
+/// tag against (an untagged local build answers with its crate version
+/// instead), and the cache is keyed by it for the same reason. `v0.4.1` and
+/// `0.4.1` name one release; `0.5.0rc9` and `0.5.0` name two, because a
+/// candidate is tagged as its own release while its crates stay at `0.5.0`
+/// — which is why the pin is the tag and never the crate version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
     pub tag: String,
@@ -309,6 +312,36 @@ fn human_size(n: usize) -> String {
     } else {
         format!("{size:.1} {}", UNITS[unit])
     }
+}
+
+/// The sha256 of some bytes, as a SHA256SUMS.txt line spells it.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    dollup_format::hash_bytes(bytes)
+        .0
+        .trim_start_matches("sha256:")
+        .to_string()
+}
+
+/// Which cached release a binary is, by its sha256 against every cached
+/// release's SHA256SUMS.txt: the version, and the sums that vouch for it.
+/// `None` when nothing cached matches — never a guess, and never by running
+/// it. Releases are asked in name order, so two that ship identical bytes
+/// answer the same way every time.
+pub(crate) fn identify(hex: &str) -> Option<(String, PathBuf)> {
+    let cache = crate::home::drt_cache_root()?;
+    let mut releases: Vec<PathBuf> = std::fs::read_dir(&cache)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    releases.sort();
+    releases.into_iter().find_map(|dir| {
+        let sums_path = dir.join("SHA256SUMS.txt");
+        let sums = std::fs::read_to_string(&sums_path).ok()?;
+        asset_with_hash(&sums, hex)?;
+        let version = dir.file_name()?.to_string_lossy().into_owned();
+        Some((version, sums_path))
+    })
 }
 
 /// The asset in a sums file whose hash is `hex`, if any: the question

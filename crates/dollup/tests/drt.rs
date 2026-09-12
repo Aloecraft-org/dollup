@@ -151,7 +151,8 @@ fn pull_fills_the_cache_deploy_copies_from_it_and_pin_records_it() {
     assert!(out.contains("start would run"), "{out}");
 
     // A pin that names the tag spelling records the version spelling: the
-    // pin is what `drt buildinfo` reports, and that has no `v`.
+    // pin is the tag without its `v`, which is what drt compares its own
+    // stamped tag against.
     let out = run(dollup(&home)
         .arg("--root")
         .arg(&root)
@@ -205,12 +206,96 @@ fn pin_all_walks_the_recorded_roots_and_a_bare_pin_needs_something_to_identify()
         out.contains("the pin is 9.9.9 and the binary is now 9.9.10"),
         "{out}"
     );
-    // Which audit refuses, by name: start would too.
+    // Which audit refuses, by name — both names, since the cache knows
+    // what the binary is — and in start's own words.
     let out = fail(dollup(&home).arg("--root").arg(&a).arg("audit"));
-    assert!(out.contains("is not a 9.9.9 build"), "{out}");
+    assert!(
+        out.contains("is not a 9.9.9 build: it is 9.9.10 by sha256"),
+        "{out}"
+    );
+    assert!(
+        out.contains("the pinned drt is 9.9.9 and this binary is 9.9.10"),
+        "{out}"
+    );
     let out = run(dollup(&home).arg("--root").arg(&a).args(["pin", "drt"]));
     assert!(
         out.contains("pinned drt 9.9.10"),
         "identified through the cache: {out}"
     );
+}
+
+/// A candidate is its own release. drt compares a pin against the tag the
+/// binary was cut from, minus the `v` — `0.5.0rc9` — while the crate inside
+/// stays at `0.5.0`, so `0.5.0rc9` and `0.5.0` are two pins. dollup spells a
+/// release the same way end to end, and audit's verdict on a mismatch is
+/// start's, in start's words.
+#[test]
+fn a_candidate_is_its_own_release_and_a_pin_to_the_release_refuses_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let rc = write_mirror(
+        &tmp.path().join("mirror"),
+        "v0.5.0rc9",
+        b"#!/bin/sh\necho rc9\n",
+    );
+    let latest = format!("file://{}", rc.join("latest").display());
+    let release = write_mirror(
+        &tmp.path().join("mirror-release"),
+        "v0.5.0",
+        b"#!/bin/sh\necho final\n",
+    );
+    let from_release = format!("file://{}", release.join("v0.5.0").display());
+    let root = tmp.path().join("root");
+    run(dollup(&home)
+        .arg("--root")
+        .arg(&root)
+        .args(["init", "demo"]));
+
+    // `latest` names the candidate, through the `tag:` line the release
+    // workflow writes first; it is cached and pinned as the tag without its
+    // `v`, however it is spelled on the way in.
+    let out = run(dollup(&home).args(["pull", "drt", "--from", &latest]));
+    assert!(out.contains("cached drt 0.5.0rc9"), "{out}");
+    assert!(home
+        .join(".dollup/cache/drt/0.5.0rc9/SHA256SUMS.txt")
+        .is_file());
+    let out = run(dollup(&home)
+        .arg("--root")
+        .arg(&root)
+        .args(["pin", "drt", "v0.5.0rc9"]));
+    assert!(out.contains("pinned drt 0.5.0rc9"), "{out}");
+    assert_eq!(project(&root)["drt"], "0.5.0rc9");
+    let out = run(dollup(&home).arg("--root").arg(&root).arg("audit"));
+    assert!(
+        out.contains("drt: 0.5.0rc9 pinned, 0.5.0rc9 present"),
+        "{out}"
+    );
+    assert!(out.contains("start would run"), "{out}");
+
+    // The pin moved to the release by hand while the candidate stays
+    // deployed: start refuses that by name, and so does audit, in the same
+    // words — the release's cached sums disown the binary and the
+    // candidate's name it.
+    run(dollup(&home).args(["pull", "drt", "0.5.0", "--from", &from_release]));
+    let mut pinned = project(&root);
+    pinned["drt"] = "0.5.0".into();
+    fs::write(
+        root.join(".drt_root/project.json"),
+        serde_json::to_vec_pretty(&pinned).unwrap(),
+    )
+    .unwrap();
+    let out = fail(dollup(&home).arg("--root").arg(&root).arg("audit"));
+    assert!(
+        out.contains("the pinned drt is 0.5.0 and this binary is 0.5.0rc9"),
+        "{out}"
+    );
+    assert!(
+        out.contains("is not a 0.5.0 build: it is 0.5.0rc9 by sha256"),
+        "{out}"
+    );
+    assert!(
+        out.contains("`dollup pin drt 0.5.0rc9` moves the pin"),
+        "{out}"
+    );
+    assert!(!out.contains("not verified"), "{out}");
 }

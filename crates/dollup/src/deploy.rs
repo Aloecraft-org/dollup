@@ -21,7 +21,6 @@ use anyhow::{bail, Context, Result};
 use drt_config::project::ProjectJson;
 
 use crate::deployment::write_json;
-use crate::home;
 use crate::root;
 use crate::roots;
 use crate::runtime;
@@ -139,26 +138,7 @@ fn identify(dir: &Path) -> Result<Option<String>> {
     let Ok(bytes) = fs::read(&binary) else {
         return Ok(None);
     };
-    let hex = dollup_format::hash_bytes(&bytes)
-        .0
-        .trim_start_matches("sha256:")
-        .to_string();
-    let Some(cache) = home::drt_cache_root() else {
-        return Ok(None);
-    };
-    let Ok(entries) = fs::read_dir(&cache) else {
-        return Ok(None);
-    };
-    for entry in entries {
-        let entry = entry?;
-        let Ok(sums) = fs::read_to_string(entry.path().join("SHA256SUMS.txt")) else {
-            continue;
-        };
-        if runtime::asset_with_hash(&sums, &hex).is_some() {
-            return Ok(Some(entry.file_name().to_string_lossy().into_owned()));
-        }
-    }
-    Ok(None)
+    Ok(runtime::identify(&runtime::sha256_hex(&bytes)).map(|(version, _)| version))
 }
 
 fn read_project(dir: &Path) -> Result<ProjectJson> {
