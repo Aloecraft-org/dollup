@@ -9,6 +9,7 @@ mod home;
 mod http;
 mod ops;
 mod repo;
+mod root;
 mod runtime;
 mod snap;
 mod store;
@@ -40,8 +41,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Verb {
-    /// Start an app here: config, empty lockfile, code root.
-    Init,
+    /// Start a root here: `.drt_root/` with its descriptor, consent to the
+    /// ceiling it declares, a default profile, a preflight profile, and
+    /// `dlua/app.dlua`. Creates what is missing and never rewrites what
+    /// exists, so it is also how a root gains a profile it lacked.
+    Init {
+        /// The project name. Absent is legal; audit says so.
+        name: Option<String>,
+        /// The default profile's name (default: `debug`). `release` and
+        /// `release.config.json` are the same request.
+        profile: Option<String>,
+    },
     /// Copy a starter template into this app: files you own and edit, not
     /// a locked dependency. Starts an app here if there is not one.
     New {
@@ -249,19 +259,6 @@ enum RepoVerb {
     },
 }
 
-/// The standard source `dollup init` scaffolds. SPEC.md §1 is precise about
-/// what this is and is not: the binary knows no URLs *at resolve time* — this
-/// is a line written into a file the operator owns, which they can delete or
-/// replace, and nothing resurrects it.
-const STD_REPO_URL: &str = "https://dollup.aloecraft.org/std-repo/";
-
-/// The standard repo's signing key, minted 2026-09-03. This is what turns a
-/// first run into two commands with nothing to read first: `init` scaffolds
-/// the standard source with this key pinned, and `add hello` just works.
-/// It must match site/std-repo.pub, which `dollup repo publish` derives from
-/// the private key -- the page, the scaffold and the signature cannot drift.
-const STD_REPO_KEY: Option<&str> = Some("ed25519:RZNTaXSePtutwF3IWX49hppum4O8DdCiyx7BcYSmrRc=");
-
 /// How this process was invoked, for printing back in hints.
 ///
 /// `dollup get drt` drops a binary in the working directory rather than on
@@ -299,40 +296,33 @@ fn main() -> Result<()> {
     let cfg_env = deployment::from_env();
     let cfg = cli.config.as_deref().or(cfg_env.as_deref());
     match cli.verb {
-        Verb::Init => {
-            let mut d = Deployment::init(&dir, cfg)?;
-            // Someone who just typed `dollup init` wants to install
-            // something, not to learn what a source is. Where the standard
-            // key exists, scaffold it in and hand them a command that works;
-            // where it does not, still hand them commands rather than a file
-            // to go edit.
-            println!("Created an app in {}", d.dir.display());
-            println!();
-            match STD_REPO_KEY {
-                Some(key) => {
-                    d.config.sources.push(dollup_format::SourceEntry::Signed {
-                        url: STD_REPO_URL.into(),
-                        keys: vec![key.into()],
-                    });
-                    d.save()?;
-                    println!("  dollup add hello     install a program");
-                    println!("  dollup ls            see what is installed");
-                }
-                None => {
-                    let me = me();
-                    println!("Add somewhere to install from, then install:");
-                    println!();
-                    println!("  {me} source add <url> --key <key>");
-                    println!("  {me} add <name>");
-                }
+        Verb::Init { name, profile } => {
+            // `-c` names a dollup.json app, which init no longer writes;
+            // say so rather than make a root while ignoring the flag.
+            if cfg.is_some() {
+                anyhow::bail!(
+                    "init makes a root at {}; -c and DOLLUP_CONFIG name a dollup.json app, \
+                     which init no longer writes",
+                    dir.display()
+                );
             }
+            println!("Root at {}", dir.display());
+            for line in root::init(&dir, name.as_deref(), profile.as_deref())? {
+                println!("  {line}");
+            }
+            // Someone who just typed `dollup init` wants to run something,
+            // not to learn what a profile is: the commands that work next.
+            println!();
+            println!("  drt start            deploy dlua/ to live/ and run it");
+            println!("  dollup audit         what start would do, without doing it");
+            println!("  dollup add hello     install a program from the standard source");
         }
         Verb::New { r#ref } => {
             // An empty directory is the common case, so make it work rather
             // than sending someone to run init first.
             // Respect --config / DOLLUP_CONFIG: the app's config need not be
             // at <dir>/dollup.json, so ask where it actually is.
-            if !Deployment::config_path_for(&dir, cfg).exists() {
+            if !Deployment::exists(&dir, cfg) {
                 Deployment::init(&dir, cfg)?;
             }
             let mut d = Deployment::open(&dir, cfg)?;

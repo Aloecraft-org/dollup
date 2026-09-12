@@ -56,7 +56,7 @@ fn build_repo(repo: &Path) {
 
 fn init_deployment(dep: &Path, repo: &Path) {
     run(dollup().arg("--deployment").arg(dep).arg("init"));
-    let cfg_path = dep.join("dollup.json");
+    let cfg_path = dep.join(".drt_root/project.json");
     let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
     cfg["sources"] = serde_json::json!([format!("file://{}", repo.display())]);
     fs::write(&cfg_path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
@@ -116,15 +116,15 @@ fn migrate_a_sleeping_agent_between_machines() {
     let pulled = b.join("snapshots/night-clerk.dvsnap");
     assert_eq!(fs::read(&pulled).unwrap(), fs::read(&blob_path).unwrap());
     assert!(
-        b.join("code/agent/guest/agent.dlua").exists(),
+        b.join(".drt_root/init/agent/guest/agent.dlua").exists(),
         "same code-set on B"
     );
 
     // The lock rows on A and B agree on state and code_set.
     let lock_a: serde_json::Value =
-        serde_json::from_slice(&fs::read(a.join("dollup.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(a.join(".drt_root/dollup.lock")).unwrap()).unwrap();
     let lock_b: serde_json::Value =
-        serde_json::from_slice(&fs::read(b.join("dollup.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(b.join(".drt_root/dollup.lock")).unwrap()).unwrap();
     assert_eq!(
         lock_a["snapshots"]["night-clerk"]["state"],
         lock_b["snapshots"]["night-clerk"]["state"]
@@ -155,7 +155,7 @@ fn the_publicity_gate_comes_before_writability() {
     // code-set NOTHING carries, so it must say so: with the public source in
     // place, `pull` would (correctly) go looking there, and the failure it
     // reports would be the network's rather than the hash's.
-    let cfg_path = dep.join("dollup.json");
+    let cfg_path = dep.join(".drt_root/project.json");
     let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
     cfg["sources"] = serde_json::json!([]);
     fs::write(&cfg_path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();

@@ -277,8 +277,10 @@ place it will show, and the fields are versioned with the envelope.
 
 ## 10. Verbs
 
-`dollup init` (scaffold a deployment: config with the standard sources,
-empty lockfile), `dollup add <ref>` (fetch, lock, populate — inert), `update`, `lock`,
+`dollup init` (scaffold a root: `.drt_root/` with its descriptor — the
+standard sources, a minimal ceiling — consent to that ceiling, a default
+profile, preflight, and `dlua/app.dlua`; creates what is missing, never
+rewrites what exists), `dollup add <ref>` (fetch, lock, populate — inert), `update`, `lock`,
 `ls`, `info <ref>`, `verify` (re-hash store against lock), `snapshot push
 <remote> <blob>` (gated per §7), `snapshot pull <remote> <name>`, `gc`
 (collect the store against lockfiles and pinned snapshots), `audit` (what

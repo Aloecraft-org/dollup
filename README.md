@@ -76,7 +76,7 @@ be run against something real before you publish anything of your own:
 dollup init
 dollup source add "file://$PWD/std-repo"   # an absolute path: file:// takes no relative one
 dollup add hello
-dollup get drt && ./drt run code/hello/guest/hello.dlua
+dollup get drt && ./drt run .drt_root/init/hello/guest/hello.dlua
 ```
 
 ```sh
@@ -91,9 +91,9 @@ rsync -avz --delete .publish/ user@host:/var/www/my-repo/
 # calling it publishable. The four steps are also separately available
 # (`repo seal|index|sign|blobs`) when you want them one at a time.
 
-# Consumer side: an app is a directory.
-dollup init                          # scaffolds the standard source, key pinned
-dollup add telemetry@^1              # fetch, hash-check, lock, populate code/
+# Consumer side: a root is a directory.
+dollup init my_app                   # .drt_root/, the standard source key-pinned, a hello
+dollup add telemetry@^1              # fetch, hash-check, lock, populate .drt_root/init/
 dollup verify                        # re-hash everything against the lock
 
 # Snapshots: migrate a sleeping agent (acceptance demo 2's transport half).
@@ -112,25 +112,48 @@ materialized by default: `--with-host` admits wasm targets,
 `--with-host-native` additionally admits native ones — see
 [`THREAT-NOTES.md`](THREAT-NOTES.md) for why the second flag is loud.
 
-## Config
-
-Three ways to name the config, in this order, and no others:
+## Starting a root
 
 ```sh
-dollup -c ./somewhere.json add telemetry   # an explicit file
-DOLLUP_CONFIG=./somewhere.json dollup add telemetry
-dollup add telemetry                       # <deployment>/dollup.json
+mkdir my_drt_project && cd my_drt_project && dollup init my_drt_project
+ls -a .           # .drt_root/  dlua/
+ls .drt_root      # init/ live/ log/ profile/ state/ project.json consent.json dollup.lock
+ls .drt_root/profile   # debug.config.json  preflight.config.json
 ```
 
-**Nothing is read from your home directory, nothing is looked up in XDG,
-and nothing is written on a first run.** A tool that materializes a config
-so it can read it back has not avoided depending on the config; it has
-just stopped telling you. `dollup get` needs no config at all — it takes a
-URL or a default it prints every time.
+`project.json` is the descriptor — the ceiling (`caps`), the sources, the
+declared profiles — and it is declared, never computed, so editing a profile
+never invalidates it. `consent.json` is init accepting the ceiling it just
+declared, which is why a locally authored root never prompts on its first
+start and does see the delta the first time its ceiling widens. `init/` is
+delivered content (what `add` populates), `dlua/` is what you edit, `live/`
+is what runs, and `state/` is the runtime's own. Init creates what is
+missing and never rewrites what exists: `dollup init my_drt_project release`
+on an existing root adds a `release` profile and touches nothing else.
 
-Writes go back to the file the config was read from, so `-c` is not a
-read-only view: `dollup -c x.json source add …` edits `x.json` and leaves
-no `dollup.json` behind.
+## Config
+
+A root's config is `<root>/.drt_root/project.json`, found in the directory
+named (`--root`, default the current one) and nowhere else — discovery does
+not walk up, so a subdirectory of a root is not in that root. A
+`dollup.json` app is still read, until every verb has moved, and `-c` /
+`DOLLUP_CONFIG` name one explicitly:
+
+```sh
+dollup add telemetry                       # <root>/.drt_root/project.json, else <root>/dollup.json
+dollup -c ./somewhere.json add telemetry   # an explicit dollup.json
+DOLLUP_CONFIG=./somewhere.json dollup add telemetry
+```
+
+**Nothing about config is read from your home directory, nothing is looked
+up in XDG, and nothing is written on a first run.** `~/.dollup/` exists —
+keys, the cache of pulled runtimes and packages — and config resolution
+reads nothing from it; no root ever depends on it. `dollup get` needs no
+config at all — it takes a URL or a default it prints every time.
+
+Writes go back to the file the config was read from: `source add` on a root
+edits `project.json`'s `sources` and nothing else in it; `dollup -c x.json
+source add …` edits `x.json` and leaves no `dollup.json` behind.
 
 ## Auditing a root
 

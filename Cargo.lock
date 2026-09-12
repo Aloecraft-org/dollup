@@ -329,6 +329,7 @@ dependencies = [
  "clap",
  "dollup-format",
  "drt-config",
+ "getrandom 0.2.17",
  "hex",
  "rustls",
  "rustls-native-certs",

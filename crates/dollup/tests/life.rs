@@ -122,7 +122,7 @@ fn publish_sign_add_verify_tamper_gc() {
     // Deployment: scaffold, then pin the source WITH its key.
     let dep = tmp.path().join("dep");
     run(dollup().arg("--deployment").arg(&dep).arg("init"));
-    let cfg_path = dep.join("dollup.json");
+    let cfg_path = dep.join(".drt_root/project.json");
     let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
     cfg["sources"] = serde_json::json!([
         { "url": format!("file://{}", repo.display()), "keys": [public] }
@@ -138,20 +138,20 @@ fn publish_sign_add_verify_tamper_gc() {
     assert!(out.contains("can 0.1.0"), "dependency resolved: {out}");
     assert!(out.contains("signed"), "{out}");
     assert!(out.contains("host face skipped"), "{out}");
-    assert!(dep.join("code/can/guest/can.dlua").exists());
-    assert!(dep.join("code/can/assets/logo.png").exists());
+    assert!(dep.join(".drt_root/init/can/guest/can.dlua").exists());
+    assert!(dep.join(".drt_root/init/can/assets/logo.png").exists());
     assert!(
-        !dep.join("code/can/host/can.wasm").exists(),
+        !dep.join(".drt_root/init/can/host/can.wasm").exists(),
         "gated by default"
     );
-    assert!(!dep.join("code/can/host/libcan.so").exists());
+    assert!(!dep.join(".drt_root/init/can/host/libcan.so").exists());
 
     let ls = run(dollup().arg("--deployment").arg(&dep).arg("ls"));
     assert!(ls.contains("can 0.1.0 (signed)"), "{ls}");
     run(dollup().arg("--deployment").arg(&dep).arg("verify"));
 
     // Tamper with the materialized code: verify names it.
-    fs::write(dep.join("code/can/guest/can.dlua"), b"evil").unwrap();
+    fs::write(dep.join(".drt_root/init/can/guest/can.dlua"), b"evil").unwrap();
     let msg = fail(dollup().arg("--deployment").arg(&dep).arg("verify"));
     assert!(
         msg.contains("can: guest/can.dlua does not match the lock"),
@@ -161,7 +161,7 @@ fn publish_sign_add_verify_tamper_gc() {
     // Tamper with the repo index: the signature refuses it.
     let dep2 = tmp.path().join("dep2");
     run(dollup().arg("--deployment").arg(&dep2).arg("init"));
-    fs::copy(&cfg_path, dep2.join("dollup.json")).unwrap();
+    fs::copy(&cfg_path, dep2.join(".drt_root/project.json")).unwrap();
     let index_path = repo.join("index.json");
     let mut index = fs::read(&index_path).unwrap();
     let mut f = fs::OpenOptions::new()
@@ -189,7 +189,7 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
 
     let dep = tmp.path().join("dep");
     run(dollup().arg("--deployment").arg(&dep).arg("init"));
-    let cfg_path = dep.join("dollup.json");
+    let cfg_path = dep.join(".drt_root/project.json");
     let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
     // Unsigned file:// source: fine even under require_signatures.
     cfg["sources"] = serde_json::json!([format!("file://{}", repo.display())]);
@@ -200,15 +200,18 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
         .arg(&dep)
         .args(["add", "can", "--with-host"]));
     assert!(out.contains("unsigned"), "{out}");
-    assert!(dep.join("code/can/host/can.wasm").exists(), "wasm admitted");
     assert!(
-        !dep.join("code/can/host/libcan.so").exists(),
+        dep.join(".drt_root/init/can/host/can.wasm").exists(),
+        "wasm admitted"
+    );
+    assert!(
+        !dep.join(".drt_root/init/can/host/libcan.so").exists(),
         "native still gated"
     );
 
     let dep2 = tmp.path().join("dep2");
     run(dollup().arg("--deployment").arg(&dep2).arg("init"));
-    fs::copy(&cfg_path, dep2.join("dollup.json")).unwrap();
+    fs::copy(&cfg_path, dep2.join(".drt_root/project.json")).unwrap();
     let out =
         run(dollup()
             .arg("--deployment")
@@ -216,7 +219,7 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
             .args(["add", "can", "--with-host-native"]));
     assert!(out.contains("can 0.1.0"), "{out}");
     assert!(
-        dep2.join("code/can/host/libcan.so").exists(),
+        dep2.join(".drt_root/init/can/host/libcan.so").exists(),
         "native admitted by its own flag"
     );
 
@@ -225,10 +228,10 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
     let dep3 = tmp.path().join("dep3");
     run(dollup().arg("--deployment").arg(&dep3).arg("init"));
     let mut cfg3: serde_json::Value =
-        serde_json::from_slice(&fs::read(dep3.join("dollup.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dep3.join(".drt_root/project.json")).unwrap()).unwrap();
     cfg3["sources"] = serde_json::json!(["https://example.invalid/repo"]);
     fs::write(
-        dep3.join("dollup.json"),
+        dep3.join(".drt_root/project.json"),
         serde_json::to_vec_pretty(&cfg3).unwrap(),
     )
     .unwrap();
@@ -250,10 +253,10 @@ fn zipball_of_the_same_repo_yields_the_same_identities() {
     let dep = tmp.path().join("dep");
     run(dollup().arg("--deployment").arg(&dep).arg("init"));
     let mut cfg: serde_json::Value =
-        serde_json::from_slice(&fs::read(dep.join("dollup.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dep.join(".drt_root/project.json")).unwrap()).unwrap();
     cfg["sources"] = serde_json::json!([format!("zip+file://{}", zip_path.display())]);
     fs::write(
-        dep.join("dollup.json"),
+        dep.join(".drt_root/project.json"),
         serde_json::to_vec_pretty(&cfg).unwrap(),
     )
     .unwrap();
@@ -265,10 +268,10 @@ fn zipball_of_the_same_repo_yields_the_same_identities() {
     let dep_dir = tmp.path().join("dep-dir");
     run(dollup().arg("--deployment").arg(&dep_dir).arg("init"));
     let mut cfg2: serde_json::Value =
-        serde_json::from_slice(&fs::read(dep_dir.join("dollup.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dep_dir.join(".drt_root/project.json")).unwrap()).unwrap();
     cfg2["sources"] = serde_json::json!([format!("file://{}", repo.display())]);
     fs::write(
-        dep_dir.join("dollup.json"),
+        dep_dir.join(".drt_root/project.json"),
         serde_json::to_vec_pretty(&cfg2).unwrap(),
     )
     .unwrap();
@@ -278,9 +281,9 @@ fn zipball_of_the_same_repo_yields_the_same_identities() {
         .args(["add", "can"]));
 
     let lock_a: serde_json::Value =
-        serde_json::from_slice(&fs::read(dep.join("dollup.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dep.join(".drt_root/dollup.lock")).unwrap()).unwrap();
     let lock_b: serde_json::Value =
-        serde_json::from_slice(&fs::read(dep_dir.join("dollup.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dep_dir.join(".drt_root/dollup.lock")).unwrap()).unwrap();
     assert_eq!(
         lock_a["packages"]["can"]["package_id"],
         lock_b["packages"]["can"]["package_id"]
@@ -347,7 +350,7 @@ fn one_deployment_one_meaning_per_capability_name() {
 
     let dep = tmp.path().join("dep");
     run(dollup().arg("--deployment").arg(&dep).arg("init"));
-    let cfg_path = dep.join("dollup.json");
+    let cfg_path = dep.join(".drt_root/project.json");
     let mut cfg: serde_json::Value = serde_json::from_slice(&fs::read(&cfg_path).unwrap()).unwrap();
     cfg["sources"] = serde_json::json!([format!("file://{}", repo.display())]);
     fs::write(&cfg_path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
@@ -372,7 +375,7 @@ fn one_deployment_one_meaning_per_capability_name() {
     assert!(msg.contains("'can' already bound"), "{msg}");
 
     let lock: serde_json::Value =
-        serde_json::from_slice(&fs::read(dep.join("dollup.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dep.join(".drt_root/dollup.lock")).unwrap()).unwrap();
     assert_eq!(lock["contracts"]["host:can"]["defined_by"], "can");
     // info shows the contract before anything is fetched or admitted.
     let out = run(dollup()
@@ -545,7 +548,7 @@ fn a_reserved_name_is_refused_everywhere_a_name_enters() {
     assert!(msg.contains("'Init' is a reserved name"), "{msg}");
     assert!(!msg.contains("none of"), "refused before any fetch: {msg}");
     let lock: serde_json::Value =
-        serde_json::from_slice(&fs::read(app.join("dollup.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(app.join(".drt_root/dollup.lock")).unwrap()).unwrap();
     assert!(lock["packages"].as_object().unwrap().is_empty(), "{lock}");
 }
 

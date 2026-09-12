@@ -271,6 +271,15 @@ first core implementation is done rather than inside it.
 
 ## 10a. Dollup never writes DRT's config, in either dialect
 
+> **Status (2026-09-12): superseded, kept until rewritten.** `.host.lua` is
+> being removed, `dollup.json` is retired into `.drt_root/project.json`, and
+> `dollup init` now writes a root's profiles — so "exactly three things"
+> below is no longer true. The rule that replaces this section: dollup may
+> create a config at root-creation time and never edits one that exists;
+> the descriptor (`project.json`) is the one file later verbs write, and it
+> is a descriptor, not a profile. This section argues for a world that no
+> longer exists and needs a rewrite, not a patch.
+
 Raised by the DRT side and worth settling here, because the answer is a
 boundary rather than a mechanism.
 

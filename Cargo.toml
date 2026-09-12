@@ -25,7 +25,8 @@ base64 = "0.22"
 # thing dollup-format still needs of its own is entropy for `repo keygen`,
 # because the shared signer takes its 32 random bytes as an argument rather
 # than choosing an RNG for its callers.
-getrandom = "0.2"
+# `std` so its error is a std Error and reads like every other refusal.
+getrandom = { version = "0.2", features = ["std"] }
 semver = { version = "1", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
