@@ -333,3 +333,81 @@ fn a_released_root_keeps_its_entry_under_init_and_audit_looks_there() {
         "{out}"
     );
 }
+
+#[test]
+fn the_envelope_is_checked_against_init_and_answers_with_what_differs() {
+    use drt_config::envelope::{content_hash, Envelope};
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    write_root(dir, &["host:time"], None);
+    write_consent(dir, ROOT_ID);
+    let init = dir.join(".drt_root/init");
+    fs::create_dir_all(init.join("util")).unwrap();
+    fs::write(init.join("app.dlua"), b"print('shipped')").unwrap();
+    fs::write(init.join("util/enc.dlua"), b"return {}").unwrap();
+
+    // Nothing committed yet: said, with what init/ holds.
+    let (_, out) = audit(dir, &[]);
+    assert!(
+        out.contains("envelope: none — nothing has been committed; init/ holds 2 file(s)"),
+        "{out}"
+    );
+
+    // An envelope as `drt commit` writes it, over exactly these files.
+    let mut sealed = Envelope::new(
+        drt_config::id::Uuid7::parse(ROOT_ID).unwrap(),
+        drt_config::time::Timestamp::parse("2026-09-12T10:00:00Z").unwrap(),
+    );
+    sealed
+        .files
+        .insert("app.dlua".into(), content_hash(b"print('shipped')"));
+    sealed
+        .files
+        .insert("util/enc.dlua".into(), content_hash(b"return {}"));
+    let state = dir.join(".drt_root/state");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("envelope.json"),
+        serde_json::to_vec_pretty(&sealed).unwrap(),
+    )
+    .unwrap();
+    let (ok, out) = audit(dir, &[]);
+    assert!(ok, "{out}");
+    assert!(
+        out.contains("envelope: committed 2026-09-12T10:00:00Z, matches init/ (2 file(s))"),
+        "{out}"
+    );
+
+    // Three ways to differ, each named: changed, added, removed.
+    fs::write(init.join("app.dlua"), b"print('edited')").unwrap();
+    fs::write(init.join("extra.dlua"), b"return 1").unwrap();
+    fs::remove_file(init.join("util/enc.dlua")).unwrap();
+    let (ok, out) = audit(dir, &[]);
+    assert!(ok, "a stale envelope does not stop start: {out}");
+    assert!(out.contains("differ in 3 place(s)"), "{out}");
+    assert!(
+        out.contains("'app.dlua' has changed since it was committed"),
+        "{out}"
+    );
+    assert!(
+        out.contains("'extra.dlua' is in init/ and not in the envelope"),
+        "{out}"
+    );
+    assert!(
+        out.contains("'util/enc.dlua' is in the envelope and not in init/"),
+        "{out}"
+    );
+
+    // An envelope from another root is not this root's.
+    let other = Envelope::new(
+        drt_config::id::Uuid7::parse("0192f0c1-8000-7000-8000-00000000ffff").unwrap(),
+        drt_config::time::Timestamp::parse("2026-09-12T10:00:00Z").unwrap(),
+    );
+    fs::write(
+        state.join("envelope.json"),
+        serde_json::to_vec_pretty(&other).unwrap(),
+    )
+    .unwrap();
+    let (_, out) = audit(dir, &[]);
+    assert!(out.contains("not this root's"), "{out}");
+}

@@ -23,6 +23,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use drt_config::consent::{ConsentCheck, ConsentJson};
+use drt_config::envelope::{self, Envelope};
 use drt_config::project::{self, ProfileName, ProjectJson, PROFILE_SUFFIX, ROOT_DIR};
 use drt_config::resolve::{
     self, ArgValue, Entry, Finding, Requested, Resolution, ResolveInputs, RootInputs,
@@ -125,6 +126,11 @@ pub fn audit(dir: &Path, profile: Option<&str>) -> Result<Report> {
         report.block(line);
     }
     render(&mut report, &res, Some(&binary));
+    envelope_lines(
+        &mut report,
+        &root_dir,
+        inputs.root.as_ref().and_then(|r| r.project.as_ref()),
+    )?;
     // The one audit line that looks beyond this root: a root_id another
     // root on this box also holds is a `cp -r`, and `dollup duplicate` —
     // which mints a fresh one — is what should have been used. Read from
@@ -340,6 +346,83 @@ fn render(report: &mut Report, res: &Resolution, binary: Option<&BinaryCheck>) {
             report.lines.push(format!("note: {finding}"));
         }
     }
+}
+
+/// "Does the envelope hash match the committed content?" — the one computed
+/// record a root carries, written by `commit` alone, checked here against a
+/// fresh hash of `init/` and answered with what differs rather than a
+/// boolean. Notes, not blockers: start does not consult the envelope, and
+/// audit says what start would do.
+fn envelope_lines(
+    report: &mut Report,
+    root_dir: &Path,
+    project: Option<&ProjectJson>,
+) -> Result<()> {
+    let init_dir = root_dir.join(project::INIT_DIR);
+    let actual: BTreeMap<String, drt_config::canon::Hash> = files_under(&init_dir)?
+        .into_iter()
+        .map(|rel| {
+            let bytes = fs::read(init_dir.join(&rel))?;
+            Ok((rel, envelope::content_hash(&bytes)))
+        })
+        .collect::<Result<_>>()?;
+    let path = root_dir.join(project::STATE_DIR).join(envelope::FILENAME);
+    if !path.is_file() {
+        report.lines.push(format!(
+            "envelope: none — nothing has been committed{} (`drt commit` writes one)",
+            if actual.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; init/ holds {} file(s) no commit has recorded",
+                    actual.len()
+                )
+            }
+        ));
+        return Ok(());
+    }
+    let sealed: Envelope = match serde_json::from_slice(&fs::read(&path)?) {
+        Ok(e) => e,
+        Err(e) => {
+            report
+                .lines
+                .push(format!("note: {} does not parse: {e}", path.display()));
+            return Ok(());
+        }
+    };
+    if let Some(project) = project {
+        if sealed.root_id != project.root_id {
+            report.lines.push(format!(
+                "note: the envelope is for root {}, but this root is {} — not this root's                  (an envelope does not travel; `drt commit` writes this root's)",
+                sealed.root_id, project.root_id
+            ));
+            return Ok(());
+        }
+    }
+    let differences = sealed.differences(&actual);
+    if differences.is_empty() {
+        report.lines.push(format!(
+            "envelope: committed {}, matches init/ ({} file(s))",
+            sealed.committed_at,
+            sealed.files.len()
+        ));
+        return Ok(());
+    }
+    report.lines.push(format!(
+        "note: the envelope (committed {}) and init/ differ in {} place(s):",
+        sealed.committed_at,
+        differences.len()
+    ));
+    const SHOWN: usize = 10;
+    for difference in differences.iter().take(SHOWN) {
+        report.lines.push(format!("  - {difference}"));
+    }
+    if differences.len() > SHOWN {
+        report
+            .lines
+            .push(format!("  … and {} more", differences.len() - SHOWN));
+    }
+    Ok(())
 }
 
 fn consent_lines(report: &mut Report, check: &ConsentCheck) {
