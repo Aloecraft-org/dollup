@@ -196,8 +196,15 @@ fn ensure_code_set(
         return Ok(vec![]);
     }
     let sources = deployment.config.sources.clone();
+    let mut skips: Vec<String> = vec![];
     for entry in &sources {
-        let opened = ops::open_source(entry, deployment.config.require_signatures)?;
+        let opened = match ops::open_source(entry, deployment.config.require_signatures)? {
+            ops::Open::Ready(source) => source,
+            ops::Open::Skipped { url, why } => {
+                skips.push(format!("skipped {url}: {why}"));
+                continue;
+            }
+        };
         for (pkg_name, versions) in &opened.index.packages {
             for (version, e) in &versions.versions {
                 if e.code_set.as_ref() == Some(code_set) {
@@ -206,14 +213,22 @@ fn ensure_code_set(
                         name: pkg_name.clone(),
                         version: Some(format!("={version}").parse()?),
                     };
-                    return ops::add(deployment, &r, HostGates::default());
+                    let mut lines = ops::add(deployment, &r, HostGates::default())?;
+                    skips.append(&mut lines);
+                    return Ok(skips);
                 }
             }
         }
     }
+    let unread = if skips.is_empty() {
+        String::new()
+    } else {
+        format!("\n  {}", skips.join("\n  "))
+    };
     bail!(
         "no locked package and no source carries code-set {code_set} — the snapshot's \
-         exact code must be published somewhere this deployment can see before it can restore"
+         exact code must be published somewhere this deployment can see before it can \
+         restore{unread}"
     );
 }
 

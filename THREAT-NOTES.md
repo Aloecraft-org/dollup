@@ -38,6 +38,19 @@ rollback/freeze attacks TUF exists to address). There is no revocation. Keys
 are pinned per source entry; compromise of a pinned key is compromise of
 that source until the operator edits the line.
 
+## A source that cannot be read is passed over; one that refuses is not
+
+The source list is a fallback list, so a source that does not answer, is
+not there, or answers with no index is skipped for the next one, and the
+skip is printed. What that can never do is lower the bar: the source that
+does answer is held to its own entry's policy — its own pinned keys, or the
+`require_signatures` refusal for an unsigned network source — so blocking
+one source buys an attacker nothing but a fallback the operator listed. A
+source that is reached and refuses (a signature that does not verify, an
+index that does not parse, a format newer than this dollup) is fatal, never
+skipped: passing over a refusal would be exactly the downgrade the policy
+exists to prevent.
+
 ## An unsigned source is exactly as trustworthy as its transport
 
 With no keys pinned, "the bytes matched the index" is the entire integrity

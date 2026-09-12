@@ -559,7 +559,13 @@ fn main() -> Result<()> {
                 None => d.config.sources.clone(),
             };
             for entry in &entries {
-                let opened = ops::open_source(entry, d.config.require_signatures)?;
+                let opened = match ops::open_source(entry, d.config.require_signatures)? {
+                    ops::Open::Ready(source) => source,
+                    ops::Open::Skipped { url, why } => {
+                        eprintln!("skipped {url}: {why}");
+                        continue;
+                    }
+                };
                 if let Some((v, e)) = opened.index.select(&r.name, r.version.as_ref()) {
                     println!("{} {v} ← {}", r.name, entry.url());
                     println!("  faces: {:?}  targets: {:?}", e.faces, e.targets);

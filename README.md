@@ -164,6 +164,12 @@ Writes go back to the file the config was read from: `source add` on a root
 edits `project.json`'s `sources` and nothing else in it; `dollup -c x.json
 source add …` edits `x.json` and leaves no `dollup.json` behind.
 
+Sources are tried in order, and the list is a fallback list: one that
+cannot be read — not there, not answering, or answering with no index — is
+passed over for the next and the skip is printed. One that answers and
+refuses, by signature or by policy, stops the pull; a refusal is never a
+skip.
+
 ## Auditing a root
 
 `dollup audit` reports what `drt start` would do in the root at the current

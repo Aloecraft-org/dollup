@@ -43,10 +43,36 @@ pub struct OpenSource {
     pub signed_by: Option<String>,
 }
 
+/// A source, opened: read and admitted, or passed over.
+///
+/// The split is the fallback rule (RepoFormat.md §1: the source list is "a
+/// genuine fallback list rather than a preference"). A source that cannot
+/// be *read* — the host does not answer, the path is not there, the URL
+/// answers but holds no index — is passed over for the next one, and said.
+/// A source that is read and *refuses* — a signature that does not verify,
+/// an index that does not parse, a format newer than this dollup, an
+/// unsigned network source under `require_signatures` — is fatal, because
+/// passing over a refusal is exactly the downgrade the policy exists to
+/// prevent (THREAT-NOTES.md).
+pub enum Open {
+    Ready(OpenSource),
+    Skipped { url: String, why: String },
+}
+
+impl Open {
+    pub fn ready(&self) -> Option<&OpenSource> {
+        match self {
+            Open::Ready(source) => Some(source),
+            Open::Skipped { .. } => None,
+        }
+    }
+}
+
 /// Apply the signature policy (RepoFormat.md §8): keys present → verify or
 /// die naming the source; keys absent → unsigned, fatal for network sources
-/// under `require_signatures`.
-pub fn open_source(entry: &SourceEntry, require_signatures: bool) -> Result<OpenSource> {
+/// under `require_signatures`. A source that cannot be read at all comes
+/// back [`Open::Skipped`] rather than as an error — see [`Open`].
+pub fn open_source(entry: &SourceEntry, require_signatures: bool) -> Result<Open> {
     let url = entry.url();
     // The unsigned-network refusal comes BEFORE any fetch: a source this
     // deployment will not accept is a source it does not talk to.
@@ -56,8 +82,18 @@ pub fn open_source(entry: &SourceEntry, require_signatures: bool) -> Result<Open
              require_signatures, and the source entry pins no keys"
         );
     }
-    let fetched = fetch(url)?;
-    let index_bytes = fetched.index_bytes()?;
+    let skipped = |e: anyhow::Error| Open::Skipped {
+        url: url.to_string(),
+        why: format!("{e:#}"),
+    };
+    let fetched = match fetch(url) {
+        Ok(fetched) => fetched,
+        Err(e) => return Ok(skipped(e)),
+    };
+    let index_bytes = match fetched.index_bytes() {
+        Ok(bytes) => bytes,
+        Err(e) => return Ok(skipped(e)),
+    };
     let signed_by = if !entry.keys().is_empty() {
         let sig = fetched.sig_bytes()?.with_context(|| {
             format!("{url}: keys are pinned but the repo carries no index.json.sig")
@@ -77,12 +113,12 @@ pub fn open_source(entry: &SourceEntry, require_signatures: bool) -> Result<Open
             index.dollup_repo
         );
     }
-    Ok(OpenSource {
+    Ok(Open::Ready(OpenSource {
         entry: entry.clone(),
         fetched,
         index,
         signed_by,
-    })
+    }))
 }
 
 /// Which sources a ref resolves against: the one it pins, borrowing the
@@ -116,13 +152,16 @@ fn entries_for(deployment: &Deployment, r: &Ref) -> Result<Vec<SourceEntry>> {
 /// manifest is read once, by whichever path runs.
 pub fn pull(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec<String>> {
     let entries = entries_for(deployment, r)?;
-    let mut opened: Vec<OpenSource> = vec![];
+    let mut opened: Vec<Open> = vec![];
+    // Skips are reported by whichever path runs next, which opens the
+    // sources again; noting them here too would say everything twice.
     let (_, _, entry) = find(
         &entries,
         &mut opened,
         deployment.config.require_signatures,
         &r.name,
         r.version.as_ref(),
+        &mut vec![],
     )?;
     if entry.template {
         new_from_template(deployment, r)
@@ -140,7 +179,8 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
     let entries = entries_for(deployment, r)?;
 
     let store = Store::open(&deployment.store_dir()?)?;
-    let mut opened: Vec<OpenSource> = vec![];
+    let mut opened: Vec<Open> = vec![];
+    let mut skips: Vec<String> = vec![];
     let mut queue: VecDeque<(String, Option<semver::VersionReq>)> =
         [(r.name.clone(), r.version.clone())].into();
     let mut seen: BTreeSet<String> = BTreeSet::new();
@@ -169,8 +209,11 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
             deployment.config.require_signatures,
             &name,
             req.as_ref(),
+            &mut skips,
         )?;
-        let source = &opened[source_idx];
+        let source = opened[source_idx]
+            .ready()
+            .expect("find returns the index of a source it read");
         let manifest = admit(source, &name, &version, &entry)?;
         if manifest.template {
             // Reachable only through a dependency edge: `pull` sends a
@@ -330,30 +373,58 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
         );
     }
     deployment.save()?;
-    Ok(report)
+    skips.append(&mut report);
+    Ok(skips)
 }
 
-/// First source (in order) whose index satisfies the requirement wins.
+/// First source (in order) whose index satisfies the requirement wins. A
+/// source that cannot be read is passed over and named in `skips`, once;
+/// when nothing satisfies, the refusal says which sources were read and
+/// which were not, so a dead first source never masquerades as a missing
+/// package.
 fn find(
     entries: &[SourceEntry],
-    opened: &mut Vec<OpenSource>,
+    opened: &mut Vec<Open>,
     require_signatures: bool,
     name: &str,
     req: Option<&semver::VersionReq>,
+    skips: &mut Vec<String>,
 ) -> Result<(usize, semver::Version, IndexEntry)> {
     for (i, entry) in entries.iter().enumerate() {
         if opened.len() <= i {
-            opened.push(open_source(entry, require_signatures)?);
+            let open = open_source(entry, require_signatures)?;
+            if let Open::Skipped { url, why } = &open {
+                skips.push(format!("skipped {url}: {why}"));
+            }
+            opened.push(open);
         }
-        if let Some((v, e)) = opened[i].index.select(name, req) {
+        let Some(source) = opened[i].ready() else {
+            continue;
+        };
+        if let Some((v, e)) = source.index.select(name, req) {
             return Ok((i, v.clone(), e.clone()));
         }
     }
-    bail!(
+    let unread: Vec<String> = opened
+        .iter()
+        .filter_map(|o| match o {
+            Open::Skipped { url, why } => Some(format!("{url}: {why}")),
+            Open::Ready(_) => None,
+        })
+        .collect();
+    let mut msg = format!(
         "'{name}'{} is in none of {} source(s)",
         req.map(|r| format!(" ({r})")).unwrap_or_default(),
         entries.len()
     );
+    if !unread.is_empty() {
+        msg.push_str(&format!(
+            ", {} of which could not be read:\n  {}",
+            unread.len(),
+            unread.join("\n  ")
+        ));
+    }
+    bail!(msg);
 }
 
 /// Read and admit a manifest: bytes match the index, structure checks pass,
@@ -588,15 +659,19 @@ pub fn gc(deployment: &Deployment) -> Result<(usize, Vec<String>)> {
 /// a running app. Compare `add`, which never places a config at all.
 pub fn new_from_template(deployment: &mut Deployment, r: &Ref) -> Result<Vec<String>> {
     let entries = entries_for(deployment, r)?;
-    let mut opened: Vec<OpenSource> = vec![];
+    let mut opened: Vec<Open> = vec![];
+    let mut skips: Vec<String> = vec![];
     let (idx, version, entry) = find(
         &entries,
         &mut opened,
         deployment.config.require_signatures,
         &r.name,
         r.version.as_ref(),
+        &mut skips,
     )?;
-    let source = &opened[idx];
+    let source = opened[idx]
+        .ready()
+        .expect("find returns the index of a source it read");
     let manifest = admit(source, &r.name, &version, &entry)?;
     if !manifest.template {
         // Reachable only if the index and the manifest disagree about what
@@ -629,7 +704,7 @@ pub fn new_from_template(deployment: &mut Deployment, r: &Ref) -> Result<Vec<Str
         );
     }
 
-    let mut report = vec![];
+    let mut report = skips;
     for (rel, want) in &manifest.files {
         let remote = format!("{}/{}", entry.path, rel);
         let bytes = source.fetched.read(&remote)?.with_context(|| {
