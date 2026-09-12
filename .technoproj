@@ -1,0 +1,44 @@
+{
+  "TECHNO_VERSION": {
+    "major": 0,
+    "minor": 0,
+    "patch": 2,
+    "pre": null
+  },
+  "TECHNO_CHANGELOG": {
+    "project": "dollup",
+    "intro_extra": "\ndollup versions independently of drt and *records* the coupling rather\nthan encoding it: each entry names the repo format it reads and writes and\nthe drt-config revision it embeds, the same facts `BUILDINFO.txt` carries\nin the release. See `doc/ALIGNMENT.md`.\n",
+    "facts": [
+      {
+        "id": "repo",
+        "keys": [
+          "dollup_repo"
+        ],
+        "fmt": "repo format {dollup_repo}"
+      },
+      {
+        "id": "drt_config",
+        "keys": [
+          "drt_config"
+        ],
+        "fmt": "drt-config `{drt_config!s:.12}`"
+      }
+    ],
+    "mappings": [],
+    "tag_rule": "exact",
+    "emit_json": true,
+    "stamps": [
+      {
+        "file": "Cargo.toml",
+        "find": "^version\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)\"",
+        "spelling": "base"
+      }
+    ]
+  },
+  "TECHNO_INIT_DIRS": [
+    ".nogit",
+    ".dump",
+    "script"
+  ],
+  "TECHNO_COPYRIGHT": "Copyright Michael Godfrey [2026] | aloecraft.org [michael@aloecraft.org]"
+}

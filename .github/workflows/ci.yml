@@ -23,3 +23,8 @@ jobs:
       # template that lost a load-bearing detail fails here rather than
       # deploying a page that quietly stopped working.
       - run: ./site/build.sh --out /tmp/site-out
+      # CHANGELOG.yaml is the source of truth for release notes and the
+      # release gate; the generated CHANGELOG.md and changelog.json must
+      # match it, and the tree must agree with its newest entry (the
+      # drt-config pin in Cargo.lock, the version stamp when released).
+      - run: pip install --quiet pyyaml && make changelog-check

@@ -1,0 +1,105 @@
+# Changelog
+
+All notable changes to dollup are recorded here.
+
+Generated from `CHANGELOG.yaml`, which is the source of truth --
+edit that file, then run `script/changelog.py generate`.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+dollup versions independently of drt and *records* the coupling rather
+than encoding it: each entry names the repo format it reads and writes and
+the drt-config revision it embeds, the same facts `BUILDINFO.txt` carries
+in the release. See `doc/ALIGNMENT.md`.
+
+## [0.0.2] - unreleased
+
+`v0.0.2` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`
+
+A root is a directory, and dollup fills it. `init` writes
+`.drt_root/` with a declared ceiling, `consent` accepts it, `audit`
+reports what `drt start` would do in it and never does it, `pull`
+lands packages where `require` will find them, `pull drt` / `deploy
+drt` / `pin drt` put the runtime in it, and `duplicate` copies it as
+a new root. All of it through drt-config, the crate the runtime
+itself resolves with, so what audit says and what start does cannot
+drift within a release.
+
+The standard repo moves to its own repository, `drt-std-lib`; a
+package states its license; a source that cannot be read is passed
+over; a release the mirror does not carry is taken from the origin;
+and this release's own artifacts take the aligned names.
+
+### Added
+
+- **A root**: `dollup init [name] [profile]` writes `.drt_root/` with
+  `project.json` (the declared ceiling, never computed), a profile,
+  `consent.json` over the ceiling, `dollup.lock`, and `dlua/` beside
+  it; `dollup new <name>` makes the directory first. Discovery does
+  not walk up; `--root` names one.
+- `dollup consent`: review and accept a root's ceiling without starting anything -- the same check `drt start` runs, with the same answers. A widened ceiling takes a yes or `--accept-changes`, never `-y`.
+- **`dollup audit`**: what `drt start` would do in a root, reported
+  and never done, through the one `resolve` the runtime uses. The
+  deployed binary is checked by hash against the release's
+  SHA256SUMS.txt and never executed; the envelope is checked against
+  `init/`; a pin mismatch is named in start's own words.
+- `dollup pull <ref>`: one verb for packages and starting points, through a shared cache in `~/.dollup/cache`; a pulled package's modules land in `init/` where their names resolve, by the loader's own rule.
+- `dollup pull drt`, `deploy drt`, `pin drt`: the runtime through the cache into a root, hash-checked, never linked. A pin is the release tag without its `v`, and `--from` takes any directory laid out like the mirror -- GitHub's download directory for a tag included.
+- `dollup duplicate <path>`: this root copied as a new root -- a minted `root_id`, `duplicated_from` recorded, the runtime's directories and `consent.json` left behind, the consent the source effectively has.
+- `dollup roots`: every root on this box, recorded whenever a verb opens one, checked against disk when shown.
+- `license` in the package manifest, an SPDX expression: required to publish, optional to read, carried into the index and the lock so `ls` and `info` answer offline.
+- Templates: the one package shape that may carry config. `dollup pull <template>` copies it and never locks it.
+- A release the mirror does not carry is taken from the origin's download directory for the tag, and said; `latest` never falls back. `DOLLUP_DRT_MIRROR` and `DOLLUP_DRT_RELEASES` replace the two bases.
+- A drt release is read under either artifact spelling, chosen by its own SHA256SUMS.txt, so the aligned names and the ones every release up to 0.6.0rc1 carries both pull.
+- The site contract: `site/build.sh` builds dollup.aloecraft.org hermetically and never deploys.
+- `.technoproj`, `CHANGELOG.yaml` and `script/changelog.py`: the version and the release notes have one source each, and the release workflow derives its prerelease flag and its body from the changelog (doc/ALIGNMENT.md).
+
+### Changed
+
+- dollup depends on drt-config, the shared format crate: canonical JSON, ed25519 signing and verification, the root formats, resolution. dollup-format keeps the artifact hashing regime and the `ed25519:<base64>` spelling.
+- The standard repo lives in `drt-std-lib`, its own repository, served at dollup.aloecraft.org/std-repo/ as a sibling subtree; this repository ships the page and the key it is pinned by.
+- A source that cannot be read -- not there, not answering, or answering with no index -- is passed over for the next one and said; a source that refuses, by signature or by policy, is fatal as before.
+- The reserved names of a root's layout (`drt`, `init`, `live`, `log`, `profile`, `state`), read from drt-config's one constant, are refused wherever a package is named.
+- `snapshot push` and `snapshot pull` are the snapshot transport; bare `push`/`pull <url>` point there.
+
+### Known issues
+
+- The deploy overlay is drt's open edge: deploy copies `dlua_dir` when the profile sets one and `init/` when it does not, never both, so a pull into `init/` reaches a released root and not a development one. `dollup deploy <app>` is held until it is settled.
+- The scaffold pins the served standard source only. The zipball peer is scaffolded once drt-std-lib's tree is signed, because a keyed source without a signature is refused, not skipped.
+- `requires.features` is not a manifest field yet: drt 0.6.0 records a `features` fact but does not check it at admission, and a field nothing evaluates is worse than none.
+
+### Upgrading
+
+- **The artifacts are renamed** (doc/ALIGNMENT.md §4):
+  `dollup_linux_static_x86_64` is `dollup_linux_x86_64_musl`,
+  `dollup_darwin_arm64` is `dollup_darwin_aarch64`,
+  `dollup_darwin_x86_64` is unchanged. `install.sh` knows both.
+- **`init` writes a root, not a `dollup.json` app.** An existing
+  `dollup.json` app keeps working through `-c dollup.json`; a new
+  directory gets `.drt_root/` with `project.json`, `consent.json`,
+  a `debug` profile and `dlua/app.dlua`.
+- **A published package states its license.** `repo seal` and `repo
+  index` refuse a manifest without `"license"`; a package published
+  before the field existed still resolves and is reported as
+  declaring none.
+- **`add` is `pull`**, and bare `push`/`pull <url>` moved under
+  `snapshot`. The old spellings say where to go.
+
+
+## [0.0.1] - 2026-08-31
+
+`v0.0.1` &middot; repo format 1
+
+The first release: a fetcher and resolver for Diluvium programs and
+the capabilities they run on. A repo is a directory -- an index, a
+signed package tree, four transports for one format -- and an install
+is inert: files on disk are the entire effect. `dollup get drt` drops
+the runtime where you are, hash-checked against the release's sums.
+
+### Added
+
+- The repo format: `index.json`, `packages/<name>/<version>/`, a content-addressed blob projection, and a manifest with up to three faces (capability, guest, host).
+- Signing: a source entry pins ed25519 keys, the repo carries a detached signature over its index, every transport carries it for free.
+- `dollup init`, `add`, `verify`, `ls`, `info`, `gc`, `source add|ls|rm`, `repo keygen|seal|index|sign|blobs|verify|publish`.
+- Snapshots: private by default, pushed only with an explicit acknowledgment.
+- `dollup get drt`: one file, verified, dropped where you are.
