@@ -75,6 +75,7 @@ fn write_package(
     }
     let manifest = serde_json::json!({
         "name": name,
+        "license": "Apache-2.0",
         "version": "0.1.0",
         "guest": guest,
         "files": files

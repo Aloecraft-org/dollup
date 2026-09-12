@@ -53,6 +53,10 @@ pub struct LockedPackage {
     pub package_id: Hash,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_set: Option<Hash>,
+    /// What the package's manifest said it is licensed under, kept here so
+    /// `ls` can answer "what am I shipping, and under what" offline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
     /// Path → hash for everything materialized; what `verify` re-checks.
     pub files: BTreeMap<String, Hash>,
 }

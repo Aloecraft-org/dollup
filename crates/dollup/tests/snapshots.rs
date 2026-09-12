@@ -41,7 +41,7 @@ fn build_repo(repo: &Path) {
     fs::write(dir.join("guest/agent.dlua"), module).unwrap();
     let manifest = serde_json::json!({
         "name": "agent",
-        "version": "0.3.0",
+        "version": "0.3.0", "license": "Apache-2.0",
         "guest": { "main": "agent", "modules": { "agent": "guest/agent.dlua" } },
         "files": { "guest/agent.dlua":
             format!("sha256:{}", hex::encode(sha2::Sha256::digest(module))) }

@@ -58,7 +58,7 @@ fn write_repo(repo: &Path) {
         format!("sha256:{}", hex::encode(sha2::Sha256::digest(body))),
     );
     let manifest = serde_json::json!({
-        "name": "enc", "version": "0.1.0",
+        "name": "enc", "version": "0.1.0", "license": "Apache-2.0",
         "guest": { "modules": { "util.enc": "src/enc.dlua" } },
         "files": files
     });

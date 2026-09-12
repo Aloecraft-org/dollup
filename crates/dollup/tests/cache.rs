@@ -51,6 +51,7 @@ fn write_package(repo: &Path, name: &str, body: &[u8]) {
     );
     let manifest = serde_json::json!({
         "name": name,
+        "license": "Apache-2.0",
         "version": "0.1.0",
         "guest": { "main": name, "modules": { name: rel } },
         "files": files

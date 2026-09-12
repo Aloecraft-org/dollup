@@ -52,7 +52,7 @@ fn write_repo(home: &Path, dir: &Path, name: &str) -> String {
     fs::write(
         pkg.join("manifest.json"),
         format!(
-            r#"{{ "name": "{name}", "version": "0.1.0",
+            r#"{{ "name": "{name}", "version": "0.1.0", "license": "Apache-2.0",
   "guest": {{ "modules": {{ "{name}": "guest/{name}.dlua" }}, "source_only": true }} }}"#
         ),
     )

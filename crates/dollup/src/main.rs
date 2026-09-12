@@ -288,10 +288,11 @@ enum SourceVerb {
 #[derive(Subcommand)]
 enum RepoVerb {
     /// Hash a package's files into its manifest and validate it. Run this
-    /// after editing a package, before `index`.
+    /// after editing a package, before `index`. A package states its
+    /// license (an SPDX expression) or is refused here.
     Seal { dir: PathBuf },
-    /// Scan packages/, validate, write index.json (dropping any stale
-    /// signature).
+    /// Scan packages/, validate (a license is required to publish), write
+    /// index.json (dropping any stale signature).
     Index { dir: PathBuf },
     /// Sign index.json with a private key file; writes index.json.sig.
     Sign {
@@ -541,13 +542,17 @@ fn main() -> Result<()> {
             let d = Deployment::open(&dir, cfg)?;
             for (name, p) in &d.lock.packages {
                 println!(
-                    "{name} {} ({}) ← {}",
+                    "{name} {} ({}) ← {}{}",
                     p.version,
                     p.signed_by
                         .as_deref()
                         .map(|_| "signed")
                         .unwrap_or("unsigned"),
-                    p.source
+                    p.source,
+                    p.license
+                        .as_deref()
+                        .map(|l| format!("; {l}"))
+                        .unwrap_or_else(|| "; no license declared".into())
                 );
             }
         }
@@ -580,6 +585,10 @@ fn main() -> Result<()> {
                                 None => "no guest code",
                             }
                         }
+                    );
+                    println!(
+                        "  license: {}",
+                        e.license.as_deref().unwrap_or("none declared")
                     );
                     println!("  package: {}", e.package_id);
                     if let Some(cs) = &e.code_set {

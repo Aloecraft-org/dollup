@@ -330,7 +330,7 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
         }
 
         report.push(format!(
-            "{name} {version} ← {}{}{}{}",
+            "{name} {version} ← {}{}{}{}{}",
             source.entry.url(),
             source
                 .signed_by
@@ -354,7 +354,11 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
                         ""
                     }
                 )
-            }
+            },
+            match &manifest.license {
+                Some(license) => format!("; license: {license}"),
+                None => "; no license declared".to_string(),
+            },
         ));
         if let Some(entry) = entry_hint {
             report.push(format!("  runnable: a profile's entry \"{entry}\" runs it"));
@@ -368,6 +372,7 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
                 signed_by: source.signed_by.clone(),
                 package_id: entry.package_id.clone(),
                 code_set: entry.code_set.clone(),
+                license: manifest.license.clone(),
                 files: locked_files,
             },
         );

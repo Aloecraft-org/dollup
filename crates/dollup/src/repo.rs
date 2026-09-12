@@ -36,7 +36,7 @@ pub fn index(repo: &Path) -> Result<RepoIndex> {
             let manifest: Manifest = serde_json::from_slice(&manifest_bytes)
                 .with_context(|| format!("{} does not parse", manifest_path.display()))?;
             manifest
-                .check()
+                .check_for_publish()
                 .with_context(|| format!("{} refused", manifest_path.display()))?;
 
             // The tree is canonical: every file must be present and hash to
@@ -77,6 +77,7 @@ pub fn index(repo: &Path) -> Result<RepoIndex> {
                 faces,
                 runnable: manifest.guest.as_ref().is_some_and(|g| g.main.is_some()),
                 template: manifest.template,
+                license: manifest.license.clone(),
                 targets: manifest
                     .host
                     .as_ref()
@@ -149,7 +150,7 @@ pub fn seal(pkg_dir: &Path) -> Result<Vec<String>> {
     report.sort();
     manifest.files = files;
     manifest
-        .check()
+        .check_for_publish()
         .with_context(|| format!("{} refused after sealing", manifest_path.display()))?;
 
     let mut bytes = serde_json::to_vec_pretty(&manifest)?;
@@ -476,7 +477,7 @@ mod publish_tests {
         fs::write(pkg.join("guest/demo.dlua"), "print(host.time())\n").unwrap();
         fs::write(
             pkg.join("manifest.json"),
-            r#"{"name":"demo","version":"0.1.0",
+            r#"{"name":"demo","version":"0.1.0","license":"Apache-2.0",
                 "guest":{"main":"demo","modules":{"demo":"guest/demo.dlua"},"source_only":true}}"#,
         )
         .unwrap();

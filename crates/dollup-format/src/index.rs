@@ -57,6 +57,10 @@ pub struct IndexEntry {
     /// Copied by `dollup new` rather than installed by `dollup add`.
     #[serde(default)]
     pub template: bool,
+    /// The license the manifest states, so `ls` and `info` answer without
+    /// a fetch. Absent for a package published before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<String>,
 }

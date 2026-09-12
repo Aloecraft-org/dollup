@@ -13,6 +13,14 @@ use crate::identity::Hash;
 pub struct Manifest {
     pub name: String,
     pub version: semver::Version,
+    /// The license this package is published under, as an SPDX expression
+    /// (`Apache-2.0`, `MIT OR Apache-2.0`). Required to publish — `repo
+    /// seal` and `repo index` refuse a package without one — and carried
+    /// into the index and the lock, so `ls` and `info` answer without a
+    /// fetch. Optional to *read*: a package published before the field
+    /// existed still resolves, and is reported as declaring none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
     /// Contracts this package defines: capability name → declaration. Pure
     /// data; the face a guest and a host are both checked against.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -402,9 +410,31 @@ pub enum ManifestError {
          — `drt buildinfo` reports that too"
     )]
     DiluviumNotARevision(String),
+    #[error(
+        "no license: a published package states the license it is under, as an SPDX \
+         expression (\"license\": \"Apache-2.0\")"
+    )]
+    NoLicense,
+    #[error(
+        "license {0:?} is not an SPDX expression: one line of printable ASCII with no \
+         surrounding whitespace"
+    )]
+    BadLicense(String),
 }
 
 impl Manifest {
+    /// What a publisher's tool asks on top of [`Manifest::check`]: the
+    /// metadata a package must state to be published at all. A license is
+    /// one. Admission at `pull` asks only `check`, so a package published
+    /// before a field existed still resolves.
+    pub fn check_for_publish(&self) -> Result<(), ManifestError> {
+        self.check()?;
+        if self.license.is_none() {
+            return Err(ManifestError::NoLicense);
+        }
+        Ok(())
+    }
+
     /// Internal consistency: every path a face names is in `files`, the
     /// entry module exists, provides are declared. Cheap, offline, and run
     /// at publish and at add — failures are admission failures, by name.
@@ -416,6 +446,17 @@ impl Manifest {
                 name: self.name.clone(),
                 reserved,
             });
+        }
+        // Shape only: one line of printable ASCII, nothing around it. The
+        // SPDX grammar is not checked, because a wrong guess at it would
+        // refuse a valid expression, and a wrong license is a human's call.
+        if let Some(license) = &self.license {
+            let one_line = !license.is_empty()
+                && license.trim() == license
+                && license.chars().all(|c| c.is_ascii_graphic() || c == ' ');
+            if !one_line {
+                return Err(ManifestError::BadLicense(license.clone()));
+            }
         }
         if let Some(guest) = &self.guest {
             if let Some(main) = &guest.main {

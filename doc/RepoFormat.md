@@ -51,7 +51,7 @@ the interchangeability and buys resilience for nothing:
 ```json
 "sources": [
   "https://dollup.aloecraft.org/std-repo/",
-  "zip+https://github.com/Aloecraft-org/dollup-std-lib/archive/refs/heads/main.zip"
+  "zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip"
 ]
 ```
 
@@ -176,6 +176,7 @@ one envelope, which is §2's whole argument, so the faces stay together.
 {
   "name": "can",
   "version": "0.1.0",
+  "license": "Apache-2.0",
 
   "capability": {
     "host:can": {
@@ -224,6 +225,16 @@ one envelope, which is §2's whole argument, so the faces stay together.
 ```
 
 Notes where the shape was chosen against an obvious alternative:
+
+- **`license` is required to publish and optional to read.** An SPDX
+  expression, stated by the package and carried into the index and the
+  lock so `ls` and `info` answer without a fetch. `repo seal` and `repo
+  index` refuse a package without one; `pull` admits a package published
+  before the field existed and reports it as declaring none. Because the
+  manifest refuses unknown fields, a dollup older than the field refuses a
+  manifest that states one — adding a field to the envelope is a break for
+  old readers, which is the cost of an envelope that cannot be quietly
+  extended.
 
 - **`guest.main` is optional, and its absence is the meaning.** A package
   with an entry module is something to *run*; one without is a library other
@@ -367,7 +378,7 @@ public keys:
 "sources": [
   { "url": "https://dollup.aloecraft.org/std-repo/",
     "keys": ["ed25519:BASE64…"] },
-  { "url": "zip+https://github.com/Aloecraft-org/dollup-std-lib/archive/refs/heads/main.zip",
+  { "url": "zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip",
     "keys": ["ed25519:BASE64…"] }
 ]
 ```
