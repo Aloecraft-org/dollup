@@ -49,9 +49,11 @@ repo: Aloecraft-org/dollup
 releases:
   - version: 0.1.0
     tag: v0.1.0
-    status: unreleased
+    date: 2026-09-12
+    status: released
     stable: true
-    mirror: false
+    latest: true
+    mirror: true
     dollup_repo: 1
     drt_config: eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c
     summary: |
@@ -128,7 +130,6 @@ releases:
     date: 2026-08-31
     status: released
     stable: true
-    latest: true
     mirror: true
     dollup_repo: 1
     summary: |
