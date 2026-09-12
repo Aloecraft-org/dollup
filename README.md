@@ -132,6 +132,24 @@ Writes go back to the file the config was read from, so `-c` is not a
 read-only view: `dollup -c x.json source add …` edits `x.json` and leaves
 no `dollup.json` behind.
 
+## Auditing a root
+
+`dollup audit` reports what `drt start` would do in the root at the current
+directory (or `--root <path>`, never a parent of it): which profile, and by
+which rule; the pin, and whether `.drt_root/drt` is that release — by hash
+against the release's own sums, never by executing it; the ceiling and where
+consent stands, with the delta when the ceiling moved; the entry and whether
+it exists; the merged args; and every finding, blocking or not, rather than
+the first. It runs the same resolution `drt start` runs, so it says what
+will happen rather than what should. Safe on a root you just cloned and do
+not trust: nothing executes, nothing is delegated, nothing is written — the
+cache included.
+
+```sh
+dollup audit            # the root here, as `drt start` would see it
+dollup audit release    # as `drt start release` would
+```
+
 ## Building
 
 ```

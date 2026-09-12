@@ -328,6 +328,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dollup-format",
+ "drt-config",
  "hex",
  "rustls",
  "rustls-native-certs",

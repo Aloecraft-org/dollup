@@ -30,7 +30,7 @@ use anyhow::{bail, Context, Result};
 pub const DEFAULT_DRT_CHANNEL: &str = "https://software.aloecraft.org/releases/diluvium-drt/latest";
 
 /// Same, for a pinned version: the mirror keeps tags as directories.
-fn channel_for(version: &str) -> String {
+pub(crate) fn channel_for(version: &str) -> String {
     if version == "latest" {
         DEFAULT_DRT_CHANNEL.to_string()
     } else {
@@ -145,6 +145,17 @@ fn human_size(n: usize) -> String {
     }
 }
 
+/// The asset in a sums file whose hash is `hex`, if any: the question
+/// `audit` asks of a binary it will not execute. Any asset counts — a match
+/// says "this is a build of that release", which is what a pin is about;
+/// which platform it is for is a different question.
+pub(crate) fn asset_with_hash(sums: &str, hex: &str) -> Option<String> {
+    sums.lines().find_map(|line| {
+        let (hash, name) = line.split_once("  ")?;
+        (hash.trim() == hex).then(|| name.trim().to_string())
+    })
+}
+
 /// `<hex>  <name>` lines, the shape `sha256sum` prints.
 fn want_hash(sums: &str, asset: &str) -> Option<String> {
     sums.lines().find_map(|line| {
@@ -155,7 +166,7 @@ fn want_hash(sums: &str, asset: &str) -> Option<String> {
 
 /// `https://` through ureq, `file://` straight off the disk — the same two
 /// schemes that make an air-gapped `add` work, for the same reason.
-fn read_url(url: &str) -> Result<Vec<u8>> {
+pub(crate) fn read_url(url: &str) -> Result<Vec<u8>> {
     if let Some(path) = url.strip_prefix("file://") {
         return Ok(std::fs::read(path)?);
     }
@@ -204,6 +215,12 @@ ccc  BUILDINFO.txt
             Some("bbb")
         );
         assert_eq!(want_hash(sums, "drt_darwin_arm64"), None);
+        // And the other direction, which is how audit reads the same file.
+        assert_eq!(
+            asset_with_hash(sums, "bbb").as_deref(),
+            Some("drt_slim_linux_static_x86_64")
+        );
+        assert_eq!(asset_with_hash(sums, "bb"), None, "no prefix match");
     }
 
     #[test]

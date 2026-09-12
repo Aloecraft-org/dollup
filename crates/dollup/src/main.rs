@@ -2,8 +2,10 @@
 //! Install is inert; config is authority; materializing files is the last
 //! act. SPEC.md is the map.
 
+mod audit;
 pub mod deployment;
 mod fetch;
+mod home;
 mod http;
 mod ops;
 mod repo;
@@ -23,8 +25,9 @@ use deployment::Deployment;
 #[command(name = "dollup", version, about)]
 struct Cli {
     /// The app directory (default: the current directory). Nothing is ever
-    /// implicitly global.
-    #[arg(long, global = true, visible_alias = "deployment")]
+    /// implicitly global. `--root` is the same directory seen as a drt
+    /// root: the one holding `.drt_root/`, never a parent of it.
+    #[arg(long, global = true, visible_aliases = ["deployment", "root"])]
     app: Option<PathBuf>,
     /// The config file to use. Defaults to `DOLLUP_CONFIG` if set, then
     /// `<app>/dollup.json`. Those three, and nothing else: no home
@@ -66,6 +69,15 @@ enum Verb {
     Verify,
     /// Sweep the store against the lock.
     Gc,
+    /// Check a root for likely issues: what `drt start` would do here,
+    /// reported and never done. Safe on a root you do not trust — nothing
+    /// executes, nothing is delegated, nothing is written.
+    Audit {
+        /// A profile to audit as `drt start <profile>` would, by name
+        /// (`debug`) or filename (`debug.config.json`). Default: the root's
+        /// default_profile.
+        profile: Option<String>,
+    },
     /// Not a verb — `dollup drt get` reads naturally enough that it is
     /// worth catching rather than answering "unrecognized subcommand".
     #[command(hide = true)]
@@ -438,6 +450,18 @@ fn main() -> Result<()> {
         Verb::Gc => {
             let d = Deployment::open(&dir, cfg)?;
             println!("swept {} blob(s)", ops::gc(&d)?);
+        }
+        // Deliberately does NOT open a deployment: a root is `.drt_root/`
+        // and its files, and audit reads those and nothing else.
+        Verb::Audit { profile } => {
+            let report = audit::audit(&dir, profile.as_deref())?;
+            for line in &report.lines {
+                println!("{line}");
+            }
+            if !report.start_would_run() {
+                anyhow::bail!("{}", report.verdict());
+            }
+            println!("{}", report.verdict());
         }
         Verb::Drt { rest } => {
             let rest = rest.join(" ");
