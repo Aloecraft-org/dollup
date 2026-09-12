@@ -15,7 +15,7 @@ repository = "https://github.com/Aloecraft-org/dollup"
 dollup-format = { path = "crates/dollup-format", version = "0.0.2" }
 # The shared formats and the signing helper (consent.md; the seven-point
 # list). Pinned to a rev, never a branch: nothing mutable is ever a pin.
-drt-config = { git = "https://github.com/Aloecraft-org/diluvium-drt", rev = "375ef49c5121100e221260dab64274c5a740105d" }
+drt-config = { git = "https://github.com/Aloecraft-org/diluvium-drt", rev = "9c8b8e016ddfd5927c65d52436cd0524c92b4e67" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"

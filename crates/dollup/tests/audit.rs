@@ -299,3 +299,39 @@ fn no_root_here_is_said_and_discovery_does_not_walk_up() {
     let (ok, out) = audit(parent, &[]);
     assert!(ok, "{out}");
 }
+
+#[test]
+fn a_released_root_keeps_its_entry_under_init_and_audit_looks_there() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    write_root(dir, &["host:time"], None);
+    write_consent(dir, ROOT_ID);
+    // A released profile sets no dlua_dir: its entry is delivered content,
+    // under init/, and dlua/ is not where to look — checking it would
+    // report every released root's entry as missing.
+    fs::write(
+        dir.join(".drt_root/profile/debug.config.json"),
+        br#"{ "entry": "app.dlua", "caps": [{ "capability": "host:time" }] }"#,
+    )
+    .unwrap();
+    fs::remove_file(dir.join("dlua/app.dlua")).unwrap();
+    let (ok, out) = audit(dir, &[]);
+    assert!(!ok);
+    assert!(
+        out.contains("names entry 'app.dlua', which is not under dlua_dir 'init/'"),
+        "{out}"
+    );
+
+    fs::create_dir_all(dir.join(".drt_root/init")).unwrap();
+    fs::write(dir.join(".drt_root/init/app.dlua"), "print('shipped')\n").unwrap();
+    let (ok, out) = audit(dir, &[]);
+    assert!(ok, "{out}");
+    assert!(
+        out.contains("entry: app.dlua (from the profile), present"),
+        "{out}"
+    );
+    assert!(
+        out.contains("source: .drt_root/init/ (delivered content; the profile sets no dlua_dir)"),
+        "{out}"
+    );
+}

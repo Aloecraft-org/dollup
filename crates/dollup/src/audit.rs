@@ -104,11 +104,15 @@ pub fn audit(dir: &Path, profile: Option<&str>) -> Result<Report> {
         ..ResolveInputs::default()
     };
     let first = resolve::resolve(&inputs);
-    let source = match &first.dlua_dir {
-        Some(d) => dir.join(&d.value),
-        None => root_dir.join(project::INIT_DIR),
+    // Two listings, because which one an entry must exist in is the
+    // profile's choice: a debug profile points at `dlua/`, and a released
+    // root's profile sets no `dlua_dir` and deploys from `init/`. Resolution
+    // checks the right one; audit supplies both.
+    root.init = files_under(&root_dir.join(project::INIT_DIR))?;
+    root.dlua_dir = match &first.dlua_dir {
+        Some(d) => files_under(&dir.join(&d.value))?,
+        None => vec![],
     };
-    root.dlua_dir = files_under(&source)?;
     let binary = check_binary(
         &root_dir,
         root.project.as_ref().and_then(|p| p.drt.as_deref()),
