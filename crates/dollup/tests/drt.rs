@@ -48,17 +48,33 @@ const ASSETS: [&str; 6] = [
     "drt_slim_darwin_x86_64",
 ];
 
+/// The same, under the artifact names doc/ALIGNMENT.md §4 aligns every
+/// project on: the profile last, `musl` where `static` was, `aarch64`
+/// where `arm64` was.
+const ALIGNED_ASSETS: [&str; 6] = [
+    "drt_linux_x86_64_musl",
+    "drt_darwin_aarch64",
+    "drt_darwin_x86_64",
+    "drt_linux_x86_64_musl_slim",
+    "drt_darwin_aarch64_slim",
+    "drt_darwin_x86_64_slim",
+];
+
 /// A release directory as the mirror lays one out, with a `latest/` that
 /// says which version it is.
 fn write_mirror(mirror: &Path, tag: &str, body: &[u8]) -> PathBuf {
-    let sums: String = ASSETS
+    write_mirror_with(mirror, tag, body, &ASSETS)
+}
+
+fn write_mirror_with(mirror: &Path, tag: &str, body: &[u8], assets: &[&str]) -> PathBuf {
+    let sums: String = assets
         .iter()
         .map(|a| format!("{}  {a}\n", hex::encode(sha2::Sha256::digest(body))))
         .collect();
     let info = format!("tag: {tag}\ncommit: 0000\ndv_abi: 1\n");
     for dir in [mirror.join(tag), mirror.join("latest")] {
         fs::create_dir_all(&dir).unwrap();
-        for asset in ASSETS {
+        for asset in assets {
             fs::write(dir.join(asset), body).unwrap();
         }
         fs::write(dir.join("SHA256SUMS.txt"), &sums).unwrap();
@@ -298,4 +314,141 @@ fn a_candidate_is_its_own_release_and_a_pin_to_the_release_refuses_it() {
         "{out}"
     );
     assert!(!out.contains("not verified"), "{out}");
+}
+
+/// A candidate is `mirror: false` in drt's changelog, so the mirror does
+/// not carry it; the origin's download directory has the mirror's layout,
+/// so dollup takes it from there, says so, and checks it the same way.
+/// `latest` and an explicit `--from` never fall back.
+#[test]
+fn a_release_the_mirror_does_not_carry_is_taken_from_the_origin_and_said() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let mirror = write_mirror(
+        &tmp.path().join("mirror"),
+        "v9.9.9",
+        b"#!/bin/sh\necho nine\n",
+    );
+    let origin = write_mirror(
+        &tmp.path().join("origin"),
+        "v9.9.10rc1",
+        b"#!/bin/sh\necho candidate\n",
+    );
+    let env = |cmd: &mut Command| {
+        cmd.env("DOLLUP_DRT_MIRROR", format!("file://{}", mirror.display()))
+            .env(
+                "DOLLUP_DRT_RELEASES",
+                format!("file://{}", origin.display()),
+            );
+    };
+
+    // On the mirror: taken from it, nothing said.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd.args(["pull", "drt", "9.9.9"]));
+    assert!(out.contains("cached drt 9.9.9"), "{out}");
+    assert!(!out.contains("does not carry"), "{out}");
+
+    // Not on the mirror: taken from the origin, and said, in the report
+    // and in the note.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd.args(["pull", "drt", "9.9.10rc1"]));
+    assert!(
+        out.contains("the mirror does not carry v9.9.10rc1"),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!("from: file://{}/v9.9.10rc1", origin.display())),
+        "{out}"
+    );
+    assert!(out.contains("cached drt 9.9.10rc1"), "{out}");
+    assert!(out.contains("checked: sha256 ok"), "{out}");
+    assert!(home
+        .join(".dollup/cache/drt/9.9.10rc1/SHA256SUMS.txt")
+        .is_file());
+
+    // Nowhere: both places are named.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let msg = fail(cmd.args(["pull", "drt", "9.9.11"]));
+    assert!(
+        msg.contains("v9.9.11 is at neither the mirror") && msg.contains("nor the origin"),
+        "{msg}"
+    );
+
+    // `latest` is the mirror's stable channel and never falls back.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd.args(["pull", "drt"]));
+    assert!(
+        out.contains("already cached") || out.contains("cached drt 9.9.9"),
+        "{out}"
+    );
+
+    // Audit on a box with no cache: the sums for a candidate come from the
+    // origin when the mirror has none, so the binary is still verified.
+    let home2 = tmp.path().join("home2");
+    let root = tmp.path().join("root");
+    let mut cmd = dollup(&home2);
+    env(&mut cmd);
+    run(cmd.arg("--root").arg(&root).args(["init", "demo"]));
+    fs::write(root.join(".drt_root/drt"), b"#!/bin/sh\necho candidate\n").unwrap();
+    let mut pinned = project(&root);
+    pinned["drt"] = "9.9.10rc1".into();
+    fs::write(
+        root.join(".drt_root/project.json"),
+        serde_json::to_vec_pretty(&pinned).unwrap(),
+    )
+    .unwrap();
+    let mut cmd = dollup(&home2);
+    env(&mut cmd);
+    let out = run(cmd.arg("--root").arg(&root).arg("audit"));
+    assert!(
+        out.contains("drt: 9.9.10rc1 pinned, 9.9.10rc1 present"),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "per file://{}/v9.9.10rc1/SHA256SUMS.txt",
+            origin.display()
+        )),
+        "{out}"
+    );
+}
+
+/// A release named the aligned way is found by its sums, not by a guess
+/// from its version: the same pull reads a release under either spelling,
+/// caches it under the name it carries, and deploys it.
+#[test]
+fn a_release_under_the_aligned_asset_names_is_read_by_its_sums() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let body = b"#!/bin/sh\necho aligned\n";
+    let mirror = write_mirror_with(&tmp.path().join("mirror"), "v9.9.12", body, &ALIGNED_ASSETS);
+    let from = format!("file://{}", mirror.join("v9.9.12").display());
+    let out = run(dollup(&home).args(["pull", "drt", "9.9.12", "--from", &from]));
+    assert!(out.contains("cached drt 9.9.12"), "{out}");
+    assert!(out.contains("checked: sha256 ok"), "{out}");
+    #[cfg(target_os = "linux")]
+    assert!(
+        home.join(".dollup/cache/drt/9.9.12/drt_linux_x86_64_musl")
+            .is_file(),
+        "cached under the name the release carries"
+    );
+    let out = run(dollup(&home).args(["pull", "drt", "9.9.12", "--from", &from]));
+    assert!(out.contains("already cached"), "{out}");
+    let root = tmp.path().join("root");
+    run(dollup(&home)
+        .arg("--root")
+        .arg(&root)
+        .args(["init", "demo"]));
+    let out = run(dollup(&home)
+        .arg("--root")
+        .arg(&root)
+        .args(["pin", "drt", "9.9.12"]));
+    assert!(out.contains("pinned drt 9.9.12"), "{out}");
+    assert_eq!(fs::read(root.join(".drt_root/drt")).unwrap(), body);
+    let out = run(dollup(&home).arg("--root").arg(&root).arg("audit"));
+    assert!(out.contains("drt: 9.9.12 pinned, 9.9.12 present"), "{out}");
 }

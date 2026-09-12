@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use drt_config::consent::{ConsentCheck, ConsentJson};
 use drt_config::envelope::{self, Envelope};
 use drt_config::project::{self, ProfileName, ProjectJson, PROFILE_SUFFIX, ROOT_DIR};
@@ -320,14 +320,19 @@ fn sums_for(pinned: &str) -> Result<(String, String)> {
     } else {
         format!("v{pinned}")
     };
-    let url = format!("{}/SHA256SUMS.txt", runtime::channel_for(&tag));
-    let bytes = runtime::read_url(&url).with_context(|| {
-        format!(
-            "no cached SHA256SUMS.txt for {pinned} (`dollup pull drt {pinned}` caches one) \
-             and {url} did not answer"
-        )
-    })?;
-    Ok((String::from_utf8_lossy(&bytes).into_owned(), url))
+    // The mirror first, then the origin it copies: a candidate is not on
+    // the mirror, and a root pinned to one is still a root to audit.
+    let mirror = format!("{}/SHA256SUMS.txt", runtime::channel_for(&tag));
+    let origin = format!("{}/SHA256SUMS.txt", runtime::origin_for(&tag));
+    for url in [&mirror, &origin] {
+        if let Ok(bytes) = runtime::read_url(url) {
+            return Ok((String::from_utf8_lossy(&bytes).into_owned(), url.clone()));
+        }
+    }
+    bail!(
+        "no cached SHA256SUMS.txt for {pinned} (`dollup pull drt {pinned}` caches one), and \
+         neither {mirror} nor {origin} answered"
+    );
 }
 
 // depth: rendering, one line per audit question

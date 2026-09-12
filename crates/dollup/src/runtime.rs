@@ -20,45 +20,81 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-/// Where DRT releases live: the Aloecraft mirror. Every tag the DRT
-/// changelog marks for mirroring sits under its own directory, `latest/`
-/// tracks the changelog's `latest`, and each carries the release's own
-/// SHA256SUMS.txt beside the assets — the same names and sums as
-/// github.com/Aloecraft-org/diluvium-drt/releases, verified against them
-/// before the mirror publishes a tag at all. A tag the changelog no longer
-/// carries is gone from here; `--from` reaches GitHub directly for those.
-pub const DEFAULT_DRT_CHANNEL: &str = "https://software.aloecraft.org/releases/diluvium-drt/latest";
+/// The mirror's directory for drt: one directory per tag, `latest/`, and
+/// what drt's changelog marks `mirror: true` — which excludes candidates.
+pub const DRT_MIRROR: &str = "https://software.aloecraft.org/releases/diluvium-drt";
 
-/// Same, for a pinned version: the mirror keeps tags as directories.
-pub(crate) fn channel_for(version: &str) -> String {
-    if version == "latest" {
-        DEFAULT_DRT_CHANNEL.to_string()
-    } else {
-        format!("https://software.aloecraft.org/releases/diluvium-drt/{version}")
-    }
+/// The origin the mirror copies: GitHub's download directory for a tag has
+/// the mirror's layout, so a release the mirror does not carry — a
+/// candidate — is taken from here, and said. Not a forge adapter: one URL,
+/// laid out like the mirror, read the same way.
+pub const DRT_RELEASES: &str = "https://github.com/Aloecraft-org/diluvium-drt/releases/download";
+
+/// `DOLLUP_DRT_MIRROR` and `DOLLUP_DRT_RELEASES` replace the two bases, the
+/// way drt's own installer takes `DRT_MIRROR`: a `file://` directory laid
+/// out like the mirror is an air-gapped copy, and a test's stand-in. Empty
+/// means unset.
+fn base_from(var: &str, default: &str) -> String {
+    std::env::var(var)
+        .ok()
+        .map(|v| v.trim().trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| default.to_string())
 }
 
-/// The asset naming the release workflow uses (doc/Release.md).
-pub(crate) fn asset_name(slim: bool) -> Result<String> {
-    let os = match std::env::consts::OS {
-        "linux" => "linux_static",
-        "macos" => "darwin",
+pub(crate) fn mirror_base() -> String {
+    base_from("DOLLUP_DRT_MIRROR", DRT_MIRROR)
+}
+
+pub(crate) fn releases_base() -> String {
+    base_from("DOLLUP_DRT_RELEASES", DRT_RELEASES)
+}
+
+/// The mirror's directory for a version: `latest/`, or the tag's.
+pub(crate) fn channel_for(version: &str) -> String {
+    format!("{}/{version}", mirror_base())
+}
+
+/// The origin's directory for a tag: where a release the mirror does not
+/// carry is taken from.
+pub(crate) fn origin_for(tag: &str) -> String {
+    format!("{}/{tag}", releases_base())
+}
+
+/// The asset names a drt release may carry for this platform, newest
+/// spelling first: `doc/ALIGNMENT.md` §4 (`drt_linux_x86_64_musl`,
+/// `drt_darwin_aarch64`, the profile last) and the spelling every release
+/// up to 0.6.0rc1 used (`drt_linux_static_x86_64`, `drt_darwin_arm64`, the
+/// profile first). Which one a release carries is read off its
+/// `SHA256SUMS.txt`, never inferred from a version: the name is a handle
+/// and the sums are the fact, which is the alignment rule itself.
+pub(crate) fn asset_names(slim: bool) -> Result<Vec<String>> {
+    let (os_new, os_old, libc, ext) = match std::env::consts::OS {
+        "linux" => ("linux", "linux_static", "_musl", ""),
+        "macos" => ("darwin", "darwin", "", ""),
+        "windows" => ("windows", "windows", "", ".exe"),
         other => bail!("{other} has no prebuilt DRT yet; build it from source"),
     };
-    let arch = match std::env::consts::ARCH {
-        "x86_64" => "x86_64",
-        "aarch64" => "arm64",
+    let (arch_new, arch_old) = match std::env::consts::ARCH {
+        "x86_64" => ("x86_64", "x86_64"),
+        "aarch64" => ("aarch64", "arm64"),
         other => bail!("{other} has no prebuilt DRT yet"),
     };
-    // Linux ships x86_64 only today. Refuse by name rather than handing
-    // over a binary that cannot exec.
-    if os == "linux_static" && arch != "x86_64" {
-        bail!("linux {arch} has no prebuilt DRT yet — only x86_64");
-    }
-    Ok(format!(
-        "drt{}_{os}_{arch}",
-        if slim { "_slim" } else { "" }
-    ))
+    let profile = if slim { "_slim" } else { "" };
+    let old_profile = if slim { "_slim" } else { "" };
+    Ok(vec![
+        format!("drt_{os_new}_{arch_new}{libc}{profile}{ext}"),
+        format!("drt{old_profile}_{os_old}_{arch_old}{ext}"),
+    ])
+}
+
+/// The asset for this platform that a directory already holds, under
+/// either spelling.
+fn cached_asset(dir: &Path, slim: bool) -> Result<Option<PathBuf>> {
+    Ok(asset_names(slim)?
+        .into_iter()
+        .map(|name| dir.join(name))
+        .find(|path| path.is_file()))
 }
 
 /// A release as the mirror names it: the tag it is served under, and the
@@ -142,13 +178,41 @@ pub struct Fetched {
 /// workflow is still a release someone may want to pin. A MISMATCH always
 /// refuses.
 pub fn fetch(base: &str, slim: bool) -> Result<Fetched> {
-    let asset = asset_name(slim)?;
-    println!("fetching {base}/{asset}");
-    let bytes =
-        read_url(&format!("{base}/{asset}")).with_context(|| format!("no {asset} at {base}"))?;
+    let candidates = asset_names(slim)?;
     let sums = read_url(&format!("{base}/SHA256SUMS.txt"))
         .ok()
         .map(|b| String::from_utf8_lossy(&b).into_owned());
+    // The sums say which spelling this release carries. Without sums, ask
+    // for each in turn; the first that answers is the one.
+    let listed = sums.as_deref().and_then(|sums| {
+        candidates
+            .iter()
+            .find(|name| want_hash(sums, name).is_some())
+    });
+    let (asset, bytes) = match listed {
+        Some(name) => {
+            println!("fetching {base}/{name}");
+            let bytes = read_url(&format!("{base}/{name}"))
+                .with_context(|| format!("no {name} at {base}"))?;
+            (name.clone(), bytes)
+        }
+        None => {
+            let mut found = None;
+            for name in &candidates {
+                println!("fetching {base}/{name}");
+                if let Ok(bytes) = read_url(&format!("{base}/{name}")) {
+                    found = Some((name.clone(), bytes));
+                    break;
+                }
+            }
+            found.with_context(|| {
+                format!(
+                    "no drt for this platform at {base}: none of {} is there",
+                    candidates.join(", ")
+                )
+            })?
+        }
+    };
     let checked = match &sums {
         None => {
             eprintln!("warning: {base} has no SHA256SUMS.txt; not verified");
@@ -237,21 +301,22 @@ pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached>
     let dir = crate::home::drt_cache_dir(&release.version).ok_or_else(|| {
         anyhow::anyhow!("dollup keeps its cache in ~/.dollup/cache, and HOME is not set")
     })?;
-    let asset_name = asset_name(slim)?;
-    let asset = dir.join(&asset_name);
-    if asset.is_file() && dir.join("SHA256SUMS.txt").is_file() {
-        return Ok(Cached {
-            release: release.clone(),
-            asset,
-            lines: vec![format!(
-                "drt {} is already cached at {}",
-                release.version,
-                dir.display()
-            )],
-        });
+    if let Some(asset) = cached_asset(&dir, slim)? {
+        if dir.join("SHA256SUMS.txt").is_file() {
+            return Ok(Cached {
+                release: release.clone(),
+                asset,
+                lines: vec![format!(
+                    "drt {} is already cached at {}",
+                    release.version,
+                    dir.display()
+                )],
+            });
+        }
     }
-    let fetched = fetch(&base, slim)?;
+    let (fetched, fallback) = fetch_release(&release, &base, from.is_some(), slim)?;
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    let asset = dir.join(&fetched.asset);
     write_executable(&asset, &fetched.bytes)
         .with_context(|| format!("writing {}", asset.display()))?;
     if let Some(sums) = &fetched.sums {
@@ -260,20 +325,59 @@ pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached>
     if let Some(info) = &fetched.buildinfo {
         std::fs::write(dir.join("BUILDINFO.txt"), info)?;
     }
+    let mut lines = vec![
+        format!(
+            "cached drt {} at {} ({}, {})",
+            release.version,
+            dir.display(),
+            fetched.asset,
+            human_size(fetched.bytes.len())
+        ),
+        format!("  checked: {}", fetched.checked),
+    ];
+    if let Some(origin) = fallback {
+        lines.push(format!(
+            "  from: {origin} — the mirror does not carry {}",
+            release.tag
+        ));
+    }
     Ok(Cached {
         release: release.clone(),
         asset,
-        lines: vec![
-            format!(
-                "cached drt {} at {} ({}, {})",
-                release.version,
-                dir.display(),
-                fetched.asset,
-                human_size(fetched.bytes.len())
-            ),
-            format!("  checked: {}", fetched.checked),
-        ],
+        lines,
     })
+}
+
+/// Fetch a release from `base`, and when `base` is the mirror's directory
+/// for the tag and does not answer, from the origin's directory for the
+/// same tag — said, and returned, so the report can name where the bytes
+/// came from. An explicit `--from` is the operator's word and never falls
+/// back. The origin's directory is checked exactly as the mirror's is: the
+/// sums beside the asset, mismatch refused.
+fn fetch_release(
+    release: &Release,
+    base: &str,
+    explicit: bool,
+    slim: bool,
+) -> Result<(Fetched, Option<String>)> {
+    match fetch(base, slim) {
+        Ok(fetched) => Ok((fetched, None)),
+        Err(e) if !explicit => {
+            let origin = origin_for(&release.tag);
+            eprintln!(
+                "note: the mirror does not carry {} ({e:#}); taking it from {origin}",
+                release.tag
+            );
+            let fetched = fetch(&origin, slim).with_context(|| {
+                format!(
+                    "{} is at neither the mirror ({base}) nor the origin ({origin})",
+                    release.tag
+                )
+            })?;
+            Ok((fetched, Some(origin)))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// The cached asset for a release, pulling it if it is not there. A named
@@ -283,8 +387,7 @@ pub fn ensure_cached(version: &str, from: Option<&str>, slim: bool) -> Result<Ca
     if version != "latest" {
         let release = Release::named(version);
         if let Some(dir) = crate::home::drt_cache_dir(&release.version) {
-            let asset = dir.join(asset_name(slim)?);
-            if asset.is_file() {
+            if let Some(asset) = cached_asset(&dir, slim)? {
                 return Ok(Cached {
                     release,
                     asset,
@@ -449,33 +552,36 @@ ccc  BUILDINFO.txt
 
     #[test]
     fn a_pinned_version_and_latest_differ() {
-        assert_eq!(channel_for("latest"), DEFAULT_DRT_CHANNEL);
-        // The mirror keeps tags as directories beside `latest/`, so a pin is
-        // that same base with the tag where `latest` was. Derived from the
-        // constant rather than spelled again: a mirror move that touched only
-        // the constant is what left this test asserting an address nothing
-        // served, and deriving it makes the two disagree loudly instead.
-        let base = DEFAULT_DRT_CHANNEL
-            .strip_suffix("latest")
-            .expect("the channel is the `latest` directory on the mirror");
+        assert_eq!(channel_for("latest"), format!("{DRT_MIRROR}/latest"));
         let pinned = channel_for("v0.3.0");
-        assert_eq!(pinned, format!("{base}v0.3.0"));
-        assert_ne!(pinned, DEFAULT_DRT_CHANNEL);
+        assert_eq!(pinned, format!("{DRT_MIRROR}/v0.3.0"));
+        assert_ne!(pinned, channel_for("latest"));
         // Wherever it moves to, it is the Aloecraft mirror over TLS: the
         // default download of a runtime binary is not a host to drift on.
-        assert!(
-            base.starts_with("https://") && base.contains("aloecraft.org/"),
-            "{base}"
-        );
+        assert!(DRT_MIRROR.starts_with("https://") && DRT_MIRROR.contains("aloecraft.org/"));
+        // The origin is GitHub's download directory for a tag, which has
+        // the mirror's layout; the fallback reads it as it reads the mirror.
+        assert_eq!(origin_for("v0.6.0rc1"), format!("{DRT_RELEASES}/v0.6.0rc1"));
     }
 
     #[test]
-    fn the_asset_name_is_the_release_workflows() {
+    fn the_asset_names_are_both_spellings_newest_first() {
         // Only assert the shape on the platform the test runs on.
-        let full = asset_name(false).unwrap();
-        let slim = asset_name(true).unwrap();
-        assert!(full.starts_with("drt_"), "{full}");
-        assert!(slim.starts_with("drt_slim_"), "{slim}");
-        assert_eq!(slim, full.replacen("drt_", "drt_slim_", 1));
+        let full = asset_names(false).unwrap();
+        let slim = asset_names(true).unwrap();
+        assert_eq!(full.len(), 2);
+        assert!(full.iter().all(|n| n.starts_with("drt_")), "{full:?}");
+        assert!(slim.iter().all(|n| n.contains("slim")), "{slim:?}");
+        // The alignment spelling puts the profile last; the older one put
+        // it first. Both are asked for, so a release under either answers.
+        assert!(
+            slim[0].ends_with("_slim") || slim[0].ends_with("_slim.exe"),
+            "{slim:?}"
+        );
+        assert!(slim[1].starts_with("drt_slim_"), "{slim:?}");
+        if cfg!(target_os = "linux") {
+            assert_eq!(full[0], "drt_linux_x86_64_musl");
+            assert_eq!(full[1], "drt_linux_static_x86_64");
+        }
     }
 }
