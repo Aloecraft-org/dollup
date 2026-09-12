@@ -39,7 +39,7 @@ pub(crate) fn channel_for(version: &str) -> String {
 }
 
 /// The asset naming the release workflow uses (doc/Release.md).
-fn asset_name(slim: bool) -> Result<String> {
+pub(crate) fn asset_name(slim: bool) -> Result<String> {
     let os = match std::env::consts::OS {
         "linux" => "linux_static",
         "macos" => "darwin",
@@ -61,34 +61,97 @@ fn asset_name(slim: bool) -> Result<String> {
     ))
 }
 
-pub struct GetOpts {
+/// A release as the mirror names it: the tag it is served under, and the
+/// version the binary reports, which is the tag without its `v`. The pin in
+/// `project.json` is the *version*, because that is what `drt buildinfo`
+/// says and what start compares it to; the cache is keyed by it for the
+/// same reason. `v0.4.1` and `0.4.1` name one release.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Release {
+    pub tag: String,
     pub version: String,
-    pub slim: bool,
-    pub from: Option<String>,
-    pub out: PathBuf,
 }
 
-pub fn get_drt(opts: &GetOpts) -> Result<()> {
-    let asset = asset_name(opts.slim)?;
-    let base = match &opts.from {
-        Some(url) => url.trim_end_matches('/').to_string(),
-        None => channel_for(&opts.version),
-    };
+impl Release {
+    pub fn named(spelled: &str) -> Release {
+        let version = spelled.strip_prefix('v').unwrap_or(spelled).to_string();
+        Release {
+            tag: format!("v{version}"),
+            version,
+        }
+    }
+}
 
+/// Which release `version` names, and where its files are: `--from`
+/// verbatim, else the mirror's directory for the tag.
+///
+/// `latest` is resolved to a concrete tag first, through the `tag:` line
+/// of the BUILDINFO.txt served beside it, because a cache entry or a pin
+/// called "latest" would be a moving target — nothing mutable is ever a
+/// pin. A source that cannot say which version `latest` is refuses by name
+/// rather than caching under a name that will mean something else tomorrow.
+pub fn resolve(version: &str, from: Option<&str>) -> Result<(Release, String)> {
+    let base_for = |tag: &str| match from {
+        Some(url) => url.trim_end_matches('/').to_string(),
+        None => channel_for(tag),
+    };
+    if version != "latest" {
+        let release = Release::named(version);
+        let base = base_for(&release.tag);
+        return Ok((release, base));
+    }
+    let base = base_for("latest");
+    let info = read_url(&format!("{base}/BUILDINFO.txt")).with_context(|| {
+        format!("{base} has no BUILDINFO.txt to say which version `latest` is; name one")
+    })?;
+    let tag = buildinfo_tag(&String::from_utf8_lossy(&info))
+        .with_context(|| format!("{base}/BUILDINFO.txt names no tag; name a version"))?;
+    let release = Release::named(&tag);
+    // With --from, the directory given is the release. Without it, the
+    // tag's own directory — stable where `latest/` moves under it.
+    let base = match from {
+        Some(_) => base,
+        None => channel_for(&release.tag),
+    };
+    Ok((release, base))
+}
+
+/// The `tag: v0.4.1` line of a BUILDINFO.txt.
+fn buildinfo_tag(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("tag:"))
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+}
+
+/// One fetched asset, checked against the sums beside it where they exist.
+pub struct Fetched {
+    pub asset: String,
+    pub bytes: Vec<u8>,
+    pub sums: Option<String>,
+    pub buildinfo: Option<String>,
+    /// What the check concluded, for printing.
+    pub checked: String,
+}
+
+/// Fetch the runtime for this platform from `base`. A missing sums file
+/// warns rather than refuses — a release older than the sums-publishing
+/// workflow is still a release someone may want to pin. A MISMATCH always
+/// refuses.
+pub fn fetch(base: &str, slim: bool) -> Result<Fetched> {
+    let asset = asset_name(slim)?;
     println!("fetching {base}/{asset}");
     let bytes =
         read_url(&format!("{base}/{asset}")).with_context(|| format!("no {asset} at {base}"))?;
-
-    // Verify against the sums file beside it. A missing sums file warns
-    // rather than refuses — a release older than the sums-publishing
-    // workflow is still a release someone may want to pin. A MISMATCH
-    // always refuses.
-    let checked = match read_url(&format!("{base}/SHA256SUMS.txt")) {
-        Err(_) => {
+    let sums = read_url(&format!("{base}/SHA256SUMS.txt"))
+        .ok()
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let checked = match &sums {
+        None => {
             eprintln!("warning: {base} has no SHA256SUMS.txt; not verified");
             "unverified (no SHA256SUMS.txt at the source)".to_string()
         }
-        Ok(sums) => match want_hash(&String::from_utf8_lossy(&sums), &asset) {
+        Some(sums) => match want_hash(sums, &asset) {
             None => {
                 eprintln!("warning: SHA256SUMS.txt does not list {asset}; not verified");
                 "unverified (asset not listed)".to_string()
@@ -109,12 +172,40 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
             }
         },
     };
+    let buildinfo = read_url(&format!("{base}/BUILDINFO.txt"))
+        .ok()
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    Ok(Fetched {
+        asset,
+        bytes,
+        sums,
+        buildinfo,
+        checked,
+    })
+}
 
+pub struct GetOpts {
+    pub version: String,
+    pub slim: bool,
+    pub from: Option<String>,
+    pub out: PathBuf,
+}
+
+/// `dollup get drt`: one file, dropped where you are.
+pub fn get_drt(opts: &GetOpts) -> Result<()> {
+    let (release, base) = resolve(&opts.version, opts.from.as_deref())?;
+    let fetched = fetch(&base, opts.slim)?;
     let dest = opts.out.join("drt");
-    write_executable(&dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
+    write_executable(&dest, &fetched.bytes)
+        .with_context(|| format!("writing {}", dest.display()))?;
 
-    println!("wrote {} ({})", dest.display(), human_size(bytes.len()));
-    println!("  checked: {checked}");
+    println!(
+        "wrote {} ({}, drt {})",
+        dest.display(),
+        human_size(fetched.bytes.len()),
+        release.version
+    );
+    println!("  checked: {}", fetched.checked);
     // Name the invocation that works. `get` deliberately installs nothing,
     // so the binary is not on a PATH, and "it is not on your PATH" told
     // people a true thing without telling them what to type.
@@ -125,6 +216,81 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
     };
     println!("  run it: {run_as} --version");
     Ok(())
+}
+
+/// A release in the cache: `~/.dollup/cache/drt/<version>/`, holding the
+/// asset, the sums beside it, and the BUILDINFO — the mirror's own layout,
+/// so `audit` can check a pinned root offline once its runtime has been
+/// pulled once.
+pub struct Cached {
+    pub release: Release,
+    pub asset: PathBuf,
+    pub lines: Vec<String>,
+}
+
+/// `dollup pull drt [version]`: fill the cache and touch no root.
+pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached> {
+    let (release, base) = resolve(version, from)?;
+    let dir = crate::home::drt_cache_dir(&release.version).ok_or_else(|| {
+        anyhow::anyhow!("dollup keeps its cache in ~/.dollup/cache, and HOME is not set")
+    })?;
+    let asset_name = asset_name(slim)?;
+    let asset = dir.join(&asset_name);
+    if asset.is_file() && dir.join("SHA256SUMS.txt").is_file() {
+        return Ok(Cached {
+            release: release.clone(),
+            asset,
+            lines: vec![format!(
+                "drt {} is already cached at {}",
+                release.version,
+                dir.display()
+            )],
+        });
+    }
+    let fetched = fetch(&base, slim)?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    write_executable(&asset, &fetched.bytes)
+        .with_context(|| format!("writing {}", asset.display()))?;
+    if let Some(sums) = &fetched.sums {
+        std::fs::write(dir.join("SHA256SUMS.txt"), sums)?;
+    }
+    if let Some(info) = &fetched.buildinfo {
+        std::fs::write(dir.join("BUILDINFO.txt"), info)?;
+    }
+    Ok(Cached {
+        release: release.clone(),
+        asset,
+        lines: vec![
+            format!(
+                "cached drt {} at {} ({}, {})",
+                release.version,
+                dir.display(),
+                fetched.asset,
+                human_size(fetched.bytes.len())
+            ),
+            format!("  checked: {}", fetched.checked),
+        ],
+    })
+}
+
+/// The cached asset for a release, pulling it if it is not there. A named
+/// version already in the cache costs no network; `latest` always asks the
+/// source which version it is.
+pub fn ensure_cached(version: &str, from: Option<&str>, slim: bool) -> Result<Cached> {
+    if version != "latest" {
+        let release = Release::named(version);
+        if let Some(dir) = crate::home::drt_cache_dir(&release.version) {
+            let asset = dir.join(asset_name(slim)?);
+            if asset.is_file() {
+                return Ok(Cached {
+                    release,
+                    asset,
+                    lines: vec![],
+                });
+            }
+        }
+    }
+    pull_drt(version, from, slim)
 }
 
 /// `5.5 MiB`: a size the way a person reads one. Binary units, one decimal
@@ -178,7 +344,7 @@ pub(crate) fn read_url(url: &str) -> Result<Vec<u8>> {
 }
 
 #[cfg(unix)]
-fn write_executable(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_executable(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::write(path, bytes)?;
     let mut perms = std::fs::metadata(path)?.permissions();
@@ -188,7 +354,7 @@ fn write_executable(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn write_executable(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_executable(path: &Path, bytes: &[u8]) -> Result<()> {
     std::fs::write(path, bytes)?;
     Ok(())
 }
@@ -221,6 +387,21 @@ ccc  BUILDINFO.txt
             Some("drt_slim_linux_static_x86_64")
         );
         assert_eq!(asset_with_hash(sums, "bb"), None, "no prefix match");
+    }
+
+    #[test]
+    fn a_tag_and_a_version_name_one_release() {
+        assert_eq!(Release::named("v0.4.1"), Release::named("0.4.1"));
+        let r = Release::named("v0.5.0rc9");
+        assert_eq!(
+            (r.tag.as_str(), r.version.as_str()),
+            ("v0.5.0rc9", "0.5.0rc9")
+        );
+        assert_eq!(
+            buildinfo_tag("commit: abc\ntag: v0.4.1\nbuilt: today\n").as_deref(),
+            Some("v0.4.1")
+        );
+        assert_eq!(buildinfo_tag("commit: abc\n"), None);
     }
 
     #[test]

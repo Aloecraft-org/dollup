@@ -17,17 +17,23 @@ pub fn dollup_home() -> Option<PathBuf> {
         .map(|h| PathBuf::from(h).join(".dollup"))
 }
 
-/// Where a pulled drt version's release sums sit: the mirror's own layout
-/// under the cache, keyed by the pinned spelling. `dollup pull drt
-/// <version>` will write it; `audit` reads it, so a pinned root can be
-/// checked offline once its runtime has been pulled once.
+/// A pulled drt release: `~/.dollup/cache/drt/<version>/`, the mirror's own
+/// layout — the asset, SHA256SUMS.txt, BUILDINFO.txt — keyed by the version
+/// the binary reports, which is what a pin says. `dollup pull drt` writes
+/// it; `deploy drt` copies from it; `audit` reads the sums, so a pinned
+/// root can be checked offline once its runtime has been pulled once.
+pub fn drt_cache_dir(version: &str) -> Option<PathBuf> {
+    drt_cache_root().map(|d| d.join(version))
+}
+
+/// Every cached release: `~/.dollup/cache/drt/`, one directory per version.
+pub fn drt_cache_root() -> Option<PathBuf> {
+    dollup_home().map(|h| h.join("cache").join("drt"))
+}
+
+/// The sums beside a cached release.
 pub fn drt_sums_path(version: &str) -> Option<PathBuf> {
-    dollup_home().map(|h| {
-        h.join("cache")
-            .join("drt")
-            .join(version)
-            .join("SHA256SUMS.txt")
-    })
+    drt_cache_dir(version).map(|d| d.join("SHA256SUMS.txt"))
 }
 
 /// The list of roots on this box, kept by [`crate::roots`].

@@ -182,6 +182,25 @@ dollup audit            # the root here, as `drt start` would see it
 dollup audit release    # as `drt start release` would
 ```
 
+## The runtime in a root
+
+drt is never installed, only deployed: a root is self-contained, so the
+binary lives at `.drt_root/drt`, copied from `~/.dollup/cache/drt/<version>/`
+and never linked to it. `pull drt` fills the cache and touches no root —
+`latest` is resolved to the version the mirror names, never cached as a
+moving target — `deploy drt` copies the cache into the root, and `pin drt`
+deploys and records the version in `project.json`, so the pin and the
+binary agree; start refuses a mismatch by name. The pin is the version the
+binary reports (`0.4.1`, as `drt buildinfo` says it), and `v0.4.1` names
+the same release.
+
+```sh
+dollup pull drt                 # the cache, at the version latest names
+dollup pin drt                  # deploy it here and record it
+dollup pin drt v0.4.1 --all     # every root on this box
+dollup pull drt --from file:///mnt/xfer   # air-gapped: a directory laid out like the mirror
+```
+
 ## Roots on this box
 
 `dollup roots` lists every root dollup has seen on this machine — roots on

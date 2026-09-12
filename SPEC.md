@@ -282,7 +282,10 @@ standard sources, a minimal ceiling — consent to that ceiling, a default
 profile, preflight, and `dlua/app.dlua`; creates what is missing, never
 rewrites what exists), `dollup new <name>` (a directory, and a root in it),
 `dollup pull <ref>` (fetch through the shared cache, lock, populate `init/`
-— inert; a template is copied and never locked), `update`, `lock`,
+— inert; a template is copied and never locked), `pull drt` (the runtime
+into the cache, `latest` resolved to a version), `deploy drt` (the cache
+into `.drt_root/drt`, by copy), `pin drt` (deploy and record the version in
+`project.json`; `--all` over every root on the box), `update`, `lock`,
 `ls`, `info <ref>`, `verify` (re-hash store against lock), `snapshot push
 <remote> <blob>` (gated per §7), `snapshot pull <remote> <name>`, `gc`
 (sweep the shared cache against every recorded root's lock and pinned

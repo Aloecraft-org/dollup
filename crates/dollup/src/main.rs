@@ -4,6 +4,7 @@
 
 mod audit;
 mod consent;
+mod deploy;
 pub mod deployment;
 mod fetch;
 mod home;
@@ -66,8 +67,12 @@ enum Verb {
     /// instead and never locked: those files are yours to edit. Inert
     /// either way; nothing runs.
     Pull {
-        /// `name`, `name@^1.2`, or `<source-url>#name@^1.2`.
+        /// `name`, `name@^1.2`, `<source-url>#name@^1.2` — or `drt`, which
+        /// fills the cache with the runtime and touches no root.
         r#ref: String,
+        /// For `pull drt`: the release (default: latest, resolved to the
+        /// concrete version the source names, never cached as "latest").
+        version: Option<String>,
         /// Also materialize wasm host faces (component, js).
         #[arg(long)]
         with_host: bool,
@@ -76,6 +81,49 @@ enum Verb {
         /// what it does.
         #[arg(long)]
         with_host_native: bool,
+        /// For `pull drt`: where to fetch from, replacing the mirror.
+        /// Takes `file://` too, which is the air-gapped case.
+        #[arg(long, value_name = "URL")]
+        from: Option<String>,
+        /// For `pull drt`: the size profile rather than the full runtime.
+        #[arg(long)]
+        slim: bool,
+    },
+    /// Make something active in this root, and never write outside it:
+    /// `deploy drt` copies the runtime from the cache into `.drt_root/drt`
+    /// (pulling first if it is not there). An app deploys with `drt
+    /// deploy` for now.
+    Deploy {
+        /// `drt` is the only thing today.
+        what: String,
+        /// The release (default: the pin in project.json).
+        version: Option<String>,
+        /// Where to fetch from if the cache lacks it; `file://` works.
+        #[arg(long, value_name = "URL")]
+        from: Option<String>,
+        /// The size profile rather than the full runtime.
+        #[arg(long)]
+        slim: bool,
+    },
+    /// Record which runtime this root runs under, deploying it first so
+    /// the pin and the binary agree. Per root: there is one binary at
+    /// `.drt_root/drt`, so a per-profile pin could not be satisfied.
+    Pin {
+        /// `drt` is the only thing today.
+        what: String,
+        /// The release. Absent, the deployed binary is identified through
+        /// the cache by hash — never by running it — and pinned as what it
+        /// is. Required with --all.
+        version: Option<String>,
+        /// Every recorded root on this box that is still there.
+        #[arg(long)]
+        all: bool,
+        /// Where to fetch from if the cache lacks it; `file://` works.
+        #[arg(long, value_name = "URL")]
+        from: Option<String>,
+        /// The size profile rather than the full runtime.
+        #[arg(long)]
+        slim: bool,
     },
     /// Not a verb any more — `add` became `pull`. Caught so the old
     /// spelling answers with the new one, arguments carried over.
@@ -374,9 +422,31 @@ fn main() -> Result<()> {
         }
         Verb::Pull {
             r#ref,
+            version,
             with_host,
             with_host_native,
+            from,
+            slim,
         } => {
+            // The runtime: a cache fill, and no root is opened or written.
+            // `drt` is a reserved name, so this can never be a package.
+            if r#ref == "drt" {
+                let cached = runtime::pull_drt(
+                    version.as_deref().unwrap_or("latest"),
+                    from.as_deref(),
+                    slim,
+                )?;
+                for line in cached.lines {
+                    println!("{line}");
+                }
+                return Ok(());
+            }
+            if version.is_some() || from.is_some() || slim {
+                anyhow::bail!(
+                    "a version, --from and --slim apply to `pull drt` only; a package is \
+                     `pull name@^1.2` from the root's sources"
+                );
+            }
             // A bare URL is a remote, not a package — and it is what the
             // snapshot transport used to take here. Say which spelling
             // does what rather than "in none of the sources".
@@ -402,6 +472,49 @@ fn main() -> Result<()> {
             if copied {
                 println!();
                 println!("These files are yours now — edit them.");
+            }
+        }
+        Verb::Deploy {
+            what,
+            version,
+            from,
+            slim,
+        } => {
+            if what != "drt" {
+                anyhow::bail!(
+                    "`dollup deploy` knows only `drt` today; an app deploys with `drt deploy` \
+                     (dollup's copy of that waits on which directories it reads)"
+                );
+            }
+            for line in deploy::deploy_drt(&dir, version.as_deref(), &deploy::Opts { from, slim })?
+            {
+                println!("{line}");
+            }
+        }
+        Verb::Pin {
+            what,
+            version,
+            all,
+            from,
+            slim,
+        } => {
+            if what != "drt" {
+                anyhow::bail!("`dollup pin` knows only `drt` today; got '{what}'");
+            }
+            let opts = deploy::Opts { from, slim };
+            let lines = if all {
+                let Some(version) = version.as_deref() else {
+                    anyhow::bail!(
+                        "--all takes a version: pinning every root to whatever each happens \
+                         to hold would be four acts called one"
+                    );
+                };
+                deploy::pin_all(version, &opts)?
+            } else {
+                deploy::pin_drt(&dir, version.as_deref(), &opts)?
+            };
+            for line in lines {
+                println!("{line}");
             }
         }
         Verb::Add { rest } => {
