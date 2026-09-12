@@ -16,8 +16,9 @@
 #     tooling's job; a repo that rsyncs to a host of its own is a second
 #     deploy path to keep working and a second way to take a vhost down.
 #
-# Signing is not building. The signed std-repo index is committed by the
-# publisher (std-repo/publish.sh); this only copies what is committed.
+# The standard repo is not built here: it lives in drt-std-lib, which
+# implements this same contract and is staged as a sibling subtree under the
+# vhost. This page only reads it, live, and shows the key it is pinned by.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

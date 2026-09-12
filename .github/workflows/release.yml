@@ -7,9 +7,10 @@ name: Release
 # when publish=true.
 #
 # The smoke test is the point of the whole file. Every artifact must not just
-# link but RESOLVE: it indexes this checkout's std-repo, adds a package from
-# it over file://, and verifies the result against the lock. A binary that
-# cannot do that is not a dollup, however cleanly it compiled.
+# link but RESOLVE: it seals and indexes a one-package repo it writes itself,
+# pulls the package from it over file:// into a root, and verifies the result
+# against the lock. A binary that cannot do that is not a dollup, however
+# cleanly it compiled.
 
 on:
   push:
@@ -99,8 +100,6 @@ jobs:
       - run: test -s THREAT-NOTES.md
       - run: python3 ci/check-strings.py
       - run: ./site/build.sh --check
-      - run: cargo run -q -p dollup -- repo index std-repo
-      - run: git diff --exit-code std-repo/index.json
 
   build:
     name: Build (${{ matrix.name }})
@@ -152,16 +151,27 @@ jobs:
           set -eu
           BIN="$PWD/dollup_${{ matrix.name }}"
           "$BIN" --version
-          # A publisher round trip over the repo in this checkout...
-          "$BIN" repo index std-repo
-          # ...and a consumer one against it, in a scratch deployment.
+          # A publisher round trip over a repo written here...
           work=$(mktemp -d)
-          cd "$work"
-          "$BIN" init
-          "$BIN" source add "file://$GITHUB_WORKSPACE/std-repo"
-          "$BIN" add hello
-          "$BIN" verify
-          test -f code/hello/guest/hello.dlua
+          repo="$work/repo"
+          mkdir -p "$repo/packages/smoke/0.1.0/guest"
+          printf 'local M = {}\nreturn M\n' > "$repo/packages/smoke/0.1.0/guest/smoke.dlua"
+          cat > "$repo/packages/smoke/0.1.0/manifest.json" <<'JSON'
+          { "name": "smoke", "version": "0.1.0", "license": "Apache-2.0",
+            "guest": { "modules": { "smoke": "guest/smoke.dlua" }, "source_only": true } }
+          JSON
+          "$BIN" repo seal "$repo/packages/smoke/0.1.0"
+          "$BIN" repo index "$repo"
+          # ...and a consumer one against it, in a scratch root whose only
+          # source is that repo (the scaffolded standard source is a network
+          # source, and a smoke test talks to no network).
+          root="$work/root"
+          "$BIN" --root "$root" init smoke
+          "$BIN" --root "$root" source rm https://dollup.aloecraft.org/std-repo/
+          "$BIN" --root "$root" source add "file://$repo"
+          "$BIN" --root "$root" pull smoke
+          "$BIN" --root "$root" verify
+          test -f "$root/.drt_root/init/smoke.dlua"
           echo "smoke: resolved and verified a package from a file:// repo"
       - uses: actions/upload-artifact@v4
         with:

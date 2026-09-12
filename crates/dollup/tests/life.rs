@@ -67,7 +67,7 @@ fn build_repo(repo: &Path) {
         repo,
         serde_json::json!({
             "name": "can",
-            "version": "0.1.0",
+            "version": "0.1.0", "license": "Apache-2.0",
             "capability": {
                 "host:can": { "scope_type": "interface", "calls": ["can/send", "can/recv"], "shape": 1 }
             },
@@ -92,7 +92,7 @@ fn build_repo(repo: &Path) {
         repo,
         serde_json::json!({
             "name": "telemetry",
-            "version": "1.2.0",
+            "version": "1.2.0", "license": "Apache-2.0",
             "guest": { "main": "telemetry", "modules": { "telemetry": "guest/telemetry.dlua" } },
             "requires": { "packages": { "can": "^0.1" }, "capabilities": ["host:time"] }
         }),
@@ -334,7 +334,7 @@ fn one_deployment_one_meaning_per_capability_name() {
         &repo,
         serde_json::json!({
             "name": "fastcan",
-            "version": "2.0.0",
+            "version": "2.0.0", "license": "Apache-2.0",
             "capability": {
                 "host:can": { "scope_type": "interface", "calls": ["can/send"], "shape": 2 }
             },
@@ -347,7 +347,7 @@ fn one_deployment_one_meaning_per_capability_name() {
         &repo,
         serde_json::json!({
             "name": "can-vendored",
-            "version": "0.1.0",
+            "version": "0.1.0", "license": "Apache-2.0",
             "capability": {
                 "host:can": { "scope_type": "interface", "calls": ["can/send", "can/recv"], "shape": 1 }
             },
@@ -403,7 +403,7 @@ fn a_template_is_pulled_as_a_copy_and_never_locked() {
         &repo,
         serde_json::json!({
             "name": "starter",
-            "version": "0.1.0",
+            "version": "0.1.0", "license": "Apache-2.0",
             "template": true,
             "requires": { "packages": { "can": "^0.1" } }
         }),
@@ -481,7 +481,7 @@ fn uncheckable_requirements_are_refused_rather_than_ignored() {
     write_package(
         &repo,
         serde_json::json!({
-            "name": "ranged", "version": "0.1.0",
+            "name": "ranged", "version": "0.1.0", "license": "Apache-2.0",
             "guest": { "main": "m", "modules": { "m": "m.dlua" } },
             "requires": { "connectors": { "sql": ">=1, <2" } }
         }),
@@ -496,7 +496,7 @@ fn uncheckable_requirements_are_refused_rather_than_ignored() {
     write_package(
         &repo,
         serde_json::json!({
-            "name": "verreq", "version": "0.1.0",
+            "name": "verreq", "version": "0.1.0", "license": "Apache-2.0",
             "guest": { "main": "m", "modules": { "m": "m.dlua" } },
             "requires": { "diluvium": ">=5.5.1" }
         }),
@@ -514,7 +514,7 @@ fn uncheckable_requirements_are_refused_rather_than_ignored() {
     write_package(
         &repo,
         serde_json::json!({
-            "name": "abireq", "version": "0.1.0",
+            "name": "abireq", "version": "0.1.0", "license": "Apache-2.0",
             "guest": { "main": "m", "modules": { "m": "m.dlua" } },
             "requires": { "dv_abi": ">=1, <2" }
         }),
@@ -536,7 +536,7 @@ fn a_reserved_name_is_refused_everywhere_a_name_enters() {
     write_package(
         &repo,
         serde_json::json!({
-            "name": "live", "version": "0.1.0",
+            "name": "live", "version": "0.1.0", "license": "Apache-2.0",
             "guest": { "main": "m", "modules": { "m": "m.dlua" } }
         }),
         &[("m.dlua", b"return {}")],
@@ -572,15 +572,18 @@ fn a_reserved_name_is_refused_everywhere_a_name_enters() {
 
 #[test]
 fn the_published_standard_repo_verifies_under_the_shared_signer() {
-    // std-repo/index.json.sig was produced by the signer this workspace used
-    // to carry; what verifies it now is drt-config's. A signature crossing
-    // that move unchanged is the interop proof: the spelled key, the spelled
-    // signature and the index bytes mean the same thing on both sides, and
-    // drt's stricter verification accepts what dollup published.
+    // tests/fixtures/std-repo-signed/ is the standard repo's index and
+    // signature as first published (2026-09-03), produced by the signer
+    // this workspace used to carry; what verifies it now is drt-config's.
+    // A signature crossing that move unchanged is the interop proof: the
+    // spelled key, the spelled signature and the index bytes mean the same
+    // thing on both sides, and drt's stricter verification accepts what
+    // dollup published. The tree itself lives in drt-std-lib now; the key
+    // stays here, because the scaffold and the landing page pin it.
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let out = run(dollup()
         .args(["repo", "verify"])
-        .arg(checkout.join("std-repo"))
+        .arg(checkout.join("crates/dollup/tests/fixtures/std-repo-signed"))
         .arg("--key-file")
         .arg(checkout.join("site/std-repo.pub")));
     assert!(out.contains("is signed by ed25519:"), "{out}");

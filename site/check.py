@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check.py — verify the things a design pass, or a merge, tends to drop.
 
-    python3 site/check.py                  # template, site.json, and the std-repo tree
+    python3 site/check.py                  # template and site.json
     python3 site/check.py candidate.html   # a returned page, before adopting it
 
 The page carries load-bearing details a designer has no reason to know
@@ -13,12 +13,9 @@ checks mechanically instead of by eye. site/build.sh runs it before every
 build, and CI runs it too.
 """
 
-import hashlib
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +23,6 @@ REPO = os.path.dirname(HERE)
 TEMPLATE = os.path.join(HERE, "template", "index.html")
 SITE_JSON = os.path.join(HERE, "site.json")
 PUBKEY = os.path.join(HERE, "std-repo.pub")
-STD_REPO = os.path.join(REPO, "std-repo")
 
 # Phrases the copy was deliberately chosen to say. A design pass may
 # re-typeset them; rewriting them is a different job with a different review.
@@ -120,71 +116,14 @@ def problems_in_site_json():
             bad.append("site.json: channel %r has status %r" % (c.get("title"), c.get("status")))
         if c.get("status") == "live" and not c.get("url"):
             bad.append("site.json: channel %r is live with no url" % c.get("title"))
-    # Status means today: the package repo may only be 'live' once the site
-    # actually ships it, which is the signed pair being committed.
-    signed = os.path.isfile(PUBKEY) and os.path.isfile(os.path.join(STD_REPO, "index.json.sig"))
+    # Status means today: the package repo is served from drt-std-lib, so
+    # whether it is 'live' is a hand edit made when that tree is actually
+    # served -- but never without the key the page would show beside it.
     for c in d.get("channels", []):
-        if "std-repo" in (c.get("url") or "") and c.get("status") == "live" and not signed:
-            bad.append("site.json: the package repo is 'live' but the signed pair "
-                       "(site/std-repo.pub + std-repo/index.json.sig) is not committed")
-    return bad
-
-
-def sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 16), b""):
-            h.update(chunk)
-    return "sha256:" + h.hexdigest()
-
-
-def problems_in_std_repo():
-    """The committed tree must agree with its committed index, the same
-    check `dollup repo index` makes, done here without the binary so the
-    site build stays Python-only."""
-    bad = []
-    index_path = os.path.join(STD_REPO, "index.json")
-    if not os.path.isfile(index_path):
-        return ["std-repo/index.json is missing"]
-    with open(index_path) as fh:
-        index = json.load(fh)
-    for name, versions in index.get("packages", {}).items():
-        for ver, entry in versions.get("versions", {}).items():
-            pkg = os.path.join(STD_REPO, entry["path"])
-            mp = os.path.join(pkg, "manifest.json")
-            if not os.path.isfile(mp):
-                bad.append("%s %s: index names %s but it is absent" % (name, ver, entry["path"]))
-                continue
-            if sha256_file(mp) != entry["manifest"]:
-                bad.append("%s %s: manifest.json does not match the index -- run "
-                           "`dollup repo publish`" % (name, ver))
-            with open(mp) as fh:
-                manifest = json.load(fh)
-            for rel, want in manifest.get("files", {}).items():
-                fp = os.path.join(pkg, rel)
-                if not os.path.isfile(fp):
-                    bad.append("%s %s: %s named by the manifest but absent" % (name, ver, rel))
-                elif sha256_file(fp) != want:
-                    bad.append("%s %s: %s does not match its manifest hash" % (name, ver, rel))
-
-    # If the signed pair is committed, the signature must verify. Python has
-    # no ed25519; use the dollup binary when one is around, else say so.
-    sig = os.path.join(STD_REPO, "index.json.sig")
-    if os.path.isfile(PUBKEY) != os.path.isfile(sig):
-        bad.append("site/std-repo.pub and std-repo/index.json.sig must be committed together "
-                   "(one is present, the other is not)")
-    elif os.path.isfile(PUBKEY):
-        for cand in (os.path.join(REPO, "target", "release", "dollup"),
-                     os.path.join(REPO, "target", "debug", "dollup"),
-                     shutil.which("dollup")):
-            if cand and os.access(cand, os.X_OK):
-                r = subprocess.run([cand, "repo", "verify", STD_REPO, "--key-file", PUBKEY],
-                                   capture_output=True, text=True)
-                if r.returncode != 0:
-                    bad.append("signature does not verify: %s" % (r.stderr.strip() or r.stdout.strip()))
-                break
-        else:
-            print("  note  no dollup binary found; signature not verified here (CI does)")
+        if "std-repo" in (c.get("url") or "") and c.get("status") == "live" \
+                and not os.path.isfile(PUBKEY):
+            bad.append("site.json: the package repo is 'live' but site/std-repo.pub is not "
+                       "committed, so the page could not show the key it is pinned by")
     return bad
 
 
@@ -206,7 +145,6 @@ def main():
     with open(TEMPLATE, encoding="utf-8") as fh:
         report(os.path.relpath(TEMPLATE, REPO), problems_in_template(fh.read()))
     report("site/site.json", problems_in_site_json())
-    report("std-repo/ tree agrees with its index", problems_in_std_repo())
     print("PASS")
 
 

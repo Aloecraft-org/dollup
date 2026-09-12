@@ -16,28 +16,29 @@ vhost; this directory is what it finds.
 
 ```
 build.sh            the contract entry point
-render.py           template + committed std-repo -> _out
+render.py           template -> _out
 check.py            guards the template's load-bearing details; runs in build.sh and CI
 site.json           what this site is, for the portal and the manifest
 template/index.html the page: one file, no build step, no outbound requests
-nginx/std-repo.conf cache policy for /std-repo/, installed as a vhost drop-in
-std-repo.pub        the public signing key, once minted -- see below
+std-repo.pub        the public half of the standard repo's signing key -- see below
 ```
 
 ## Signed or not: one template, two pages
 
 The page has one conditional, `<!--IF:KEY-->` … `<!--ELSE:KEY-->` …
-`<!--END:KEY-->`, and `render.py` takes the first branch only when **both**
-`site/std-repo.pub` and `std-repo/index.json.sig` are committed. Then the
-key is stamped where `__DOLLUP_STD_PUBKEY__` appears, the four-command
-start and the live package table render, and `std-repo/` ships beside the
-page with its blob projection. With either file absent the page says the
-standard repo is not published yet and `std-repo/` does not ship: an
-unsigned repo at the canonical URL is an invitation to pin it unsigned.
+`<!--END:KEY-->`, and `render.py` takes the first branch only when
+`site/std-repo.pub` is committed. Then the key is stamped where
+`__DOLLUP_STD_PUBKEY__` appears, the four-command start renders, and the
+live package table fills from `/std-repo/index.json` at load. With the key
+absent the page says the standard repo is not published yet.
 
-The private key is never part of a build. `std-repo/publish.sh` signs in
-place and writes `site/std-repo.pub`; you commit the three files; the build
-copies them. That is what keeps the build hermetic.
+**The standard repo's tree is not in this repository.** It lives in
+[drt-std-lib](https://github.com/Aloecraft-org/drt-std-lib), which
+implements the same site contract and is staged by the deployment tooling
+as a sibling subtree at `/std-repo/` under this vhost, along with the nginx
+cache policy for that path. The key file committed here must match the one
+that signs that tree: `dollup init` pins it (`crates/dollup/src/root.rs`),
+the page shows it, and the publisher derives it from the private key.
 
 ## The page
 

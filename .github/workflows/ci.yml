@@ -23,14 +23,3 @@ jobs:
       # template that lost a load-bearing detail fails here rather than
       # deploying a page that quietly stopped working.
       - run: ./site/build.sh --out /tmp/site-out
-      # When the standard repo is signed, the committed signature must verify
-      # over the committed index under the committed public key.
-      - run: |
-          if [ -f site/std-repo.pub ]; then
-            cargo run -q -p dollup -- repo verify std-repo --key-file site/std-repo.pub
-          fi
-      # The standard repo must always be publishable: index re-hashes every
-      # package independently, so a hand-edited file or a stale seal fails
-      # here rather than at the mirror.
-      - run: cargo run -q -p dollup -- repo index std-repo
-      - run: git diff --exit-code std-repo/index.json

@@ -34,16 +34,20 @@ lists dollup with three channels: the mirror (planned), the package repo
 (planned) and GitHub releases (live). dollup's own `site/site.json` carries
 no mirror channel yet.
 
-**dollup.aloecraft.org is deployed from the unsigned build.** The page is
-served, says "not published yet", and `/std-repo/` answers 404 — while the
-signed index, its signature and `site/std-repo.pub` have been committed in
-`Aloecraft-org/dollup` since 2026-09-02 (`3d4b873`). The site build takes
-its signed branch and ships `std-repo/` from a current checkout; the
-deployed tree is simply older than that commit. Consequence, measured: a
-fresh `dollup init` scaffolds this source, and until dollup `9363449` its
+**dollup.aloecraft.org is deployed from the unsigned build, and the
+standard repo's tree has moved.** The page is served, says "not published
+yet", and `/std-repo/` answers 404. The tree now lives in
+`Aloecraft-org/drt-std-lib` (its own site-contract repo, staged as a
+sibling subtree at `/std-repo/` under the dollup vhost), with every package
+stating its license — which changed the index, so the signature from
+2026-09-03 no longer covers it and is not committed there. Its `site/build.sh`
+refuses to stage an unsigned tree, so nothing is served until the key
+holder runs `./publish.sh --key-file ~/.dollup/std-repo.key` and commits
+`index.json.sig` and `std-repo.pub`. Consequence, measured before the move:
+a fresh `dollup init` scaffolds this source, and until dollup `9363449` its
 first `pull` died on it whatever other sources were listed. dollup now
-passes over a source it cannot read and says so; the source is still dead
-until the site is redeployed.
+passes over a source it cannot read and says so; the source stays dead
+until drt-std-lib is signed and staged.
 
 **discofetch-api is a dollup repo on GitHub, and today's dollup refuses
 it.** `packages/discofetch-api/0.1.0/manifest.json` carries
@@ -86,7 +90,7 @@ exactly this, and nothing else, from a release directory:
 
 | read | from | why |
 |---|---|---|
-| `<base>/drt_<slim_>linux_static_x86_64` (and the darwin names) | the tag's directory | the asset, named by the platform rule in `runtime::asset_name` |
+| `<base>/drt_linux_x86_64_musl` or `<base>/drt_linux_static_x86_64` (and the darwin, slim and windows names under both spellings) | the tag's directory | the asset for this platform, under `doc/ALIGNMENT.md` §4's spelling or the one every release up to 0.6.0rc1 used — whichever the sums list; never guessed from a version |
 | `<base>/SHA256SUMS.txt` | same | the asset is hash-checked before it is cached; audit identifies a deployed binary by hash against it and never executes it |
 | `<base>/BUILDINFO.txt` | same | cached beside the asset; its `tag:` line is the one fact read |
 | `<project>/latest/BUILDINFO.txt` | the mirror | `latest` resolves to the tag on that line, and is cached under the version — never as "latest" |
@@ -104,9 +108,11 @@ is one command away for anyone: `dollup pull drt 0.6.0rc1 --from
 https://github.com/Aloecraft-org/diluvium-drt/releases/download/v0.6.0rc1`.
 Verified today, hash-checked.
 
-**What would break dollup:** renaming assets, dropping the sums or
-BUILDINFO from a tag directory, keying a directory by version instead of
-tag, or `latest/` losing its `BUILDINFO.txt`. What would improve it: if
+**What would break dollup:** an asset name under neither spelling,
+dropping the sums or BUILDINFO from a tag directory, keying a directory by
+version instead of tag, or `latest/` losing its `BUILDINFO.txt`. A release
+the mirror does not carry is taken from GitHub's download directory for
+the tag and said so (dollup, after `9363449`); `latest` never falls back. What would improve it: if
 `releases.json` is meant to be the API, say so and dollup will resolve
 `latest` and `latest-prerelease` through it and stop reading `latest/`.
 
@@ -119,7 +125,7 @@ source line in every consumer, and a signature to keep in step with the
 index — so there should be few, sorted by who publishes and signs.
 Requirements go in the manifest, not in the split.
 
-- **`dollup-std-lib`**, served at the `std-repo` URL every `init` pins, key
+- **`drt-std-lib`**, served at the `std-repo` URL every `init` pins, key
   `ed25519:RZNTaXSePtutwF3IWX49hppum4O8DdCiyx7BcYSmrRc=`: `token-bucket`,
   `token-rate-limit`, `drt-db`, `drt-http-api`, `node-event`, plus the
   existing `hello`, `hostcall` and `starter`. `drt-db` and `node-event`
@@ -138,7 +144,7 @@ hash, so locks stay valid and only the source line changes.
 
 **Where std lives.** For the zipball peer in `doc/RepoFormat.md` §2 to work,
 the git repository's root must be the repo tree, so `std-repo/` moves out of
-`Aloecraft-org/dollup` into `dollup-std-lib`, which implements the site
+`Aloecraft-org/dollup` into `drt-std-lib`, which implements the site
 contract (`doc/CONTRACT.md` in the portal repo) and is deployed by lk_web as
 a sibling subtree under the dollup vhost. dollup's page keeps reading the
 live index; dollup's own site stops shipping the tree.
@@ -188,11 +194,17 @@ false`, `mirror: false`. What it means here:
 ## 5. Asks, by session
 
 **Mirror and portal.**
-1. Stage and deploy `Aloecraft-org/dollup` from current `main` so
-   `/std-repo/` is served with its signature, then flip the package-repo
-   channel to `live` in dollup's `site/site.json` and the portal's
-   `projects.json`. Nothing else unblocks a first `dollup pull` for anyone.
-2. Plan a sibling subtree for `dollup-std-lib` under the dollup vhost (§3).
+1. Add `Aloecraft-org/drt-std-lib` to `sites.json` as a sibling subtree at
+   `/std-repo/` under the dollup vhost (its `site/site.json` says so), with
+   `site/nginx/std-repo.conf` as the path's drop-in; stage and deploy it
+   once its `index.json.sig` is committed, and redeploy dollup's own page
+   from current `main`. Then flip the package-repo channel to `live` in
+   both `site.json` files and the portal's `projects.json`. Nothing else
+   unblocks a first `dollup pull` for anyone.
+2. `doc/ALIGNMENT.md` (in dollup, from the alignment session) renames
+   every project's artifacts; dollup reads a release's asset under either
+   spelling, chosen by its `SHA256SUMS.txt`, so the mirror can carry both
+   generations.
 3. Say whether `releases.json` is the API (§2). If yes, dollup switches.
 4. The probe generalizes: a dollup repo can answer for itself through its
    signed `index.json` (`"dollup_repo": 1`, a package count), the way a
@@ -211,9 +223,10 @@ false`, `mirror: false`. What it means here:
    knows whether to carry the field.
 
 **Library owners (the nine repos and discofetch-api).**
-1. In each lib repo: `manifest.json` as in §1, the module under `guest/`,
-   a `v0.1.0` tag, and Apache-2.0, which discofetch-api names as the
-   family license. `drt-db` and `node-event` declare the sql connector.
+1. In each lib repo: `manifest.json` as in §1 plus `"license":
+   "Apache-2.0"` (the family license; `repo seal` and `repo index` refuse
+   a package without one), the module under `guest/`, a `v0.1.0` tag, and
+   a LICENSE file. `drt-db` and `node-event` declare the sql connector.
 2. One shared reusable workflow: install dollup and drt from the mirrors,
    `dollup repo seal` and `dollup repo index` into a temp tree, run the
    existing `test/run.sh`. Nine repos, one workflow.
@@ -225,9 +238,11 @@ false`, `mirror: false`. What it means here:
    JSON.
 
 **dollup (this session).** Done: source fallback (`9363449`), pin
-mismatch wording (`fdc965a`), `drt-config` at rc1 (`3b88ee2`). Next, in
-order: move `std-repo/` to `dollup-std-lib` and scaffold the zip peer;
-adopt `CHANGELOG.yaml` and drt's changelog script with a committed
+mismatch wording (`fdc965a`), `drt-config` at rc1 (`3b88ee2`), license as
+package metadata, `std-repo/` moved to `drt-std-lib`, releases the mirror
+does not carry taken from the origin, both artifact spellings read. Next,
+in order: scaffold the zip peer once drt-std-lib is signed (one constant,
+`root::STD_REPO_ZIP`); adopt `CHANGELOG.yaml` and drt's changelog script with a committed
 `changelog.json`, wired into release preflight; make `install.sh`
 mirror-first with a GitHub fallback and an air-gap override; stamp dollup's
 own compatibility facts into `BUILDINFO.txt` (the repo format version, the
@@ -237,7 +252,7 @@ v0.0.2 through all of it.
 ## 6. Order of work
 
 1. Deploy the committed site (mirror session). Unblocks every first pull.
-2. Move std-repo into `dollup-std-lib`; scaffold the zip peer (dollup).
+2. Move std-repo into `drt-std-lib`; scaffold the zip peer (dollup).
 3. Package the nine and fix discofetch-api (library owners), import into
    std and discofetch-api, sign, publish.
 4. dollup's release conformance and v0.0.2 (dollup).

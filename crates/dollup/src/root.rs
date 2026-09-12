@@ -43,6 +43,16 @@ pub const STD_REPO_URL: &str = "https://dollup.aloecraft.org/std-repo/";
 /// the private key -- the page, the scaffold and the signature cannot drift.
 pub const STD_REPO_KEY: Option<&str> = Some("ed25519:RZNTaXSePtutwF3IWX49hppum4O8DdCiyx7BcYSmrRc=");
 
+/// The standard repo's peer (RepoFormat.md §2): GitHub's zipball of the
+/// same tree, under the same key, so a root has the standard packages when
+/// the served copy is down and the served copy when GitHub is. Scaffolded
+/// only once `drt-std-lib`'s main carries `index.json.sig`: a keyed source
+/// whose tree has no signature is refused, not skipped, and would stop
+/// every pull. Set this to
+/// `Some("zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip")`
+/// the day it is signed.
+pub const STD_REPO_ZIP: Option<&str> = None;
+
 /// The profile init writes when none is named.
 pub const DEFAULT_PROFILE: &str = "debug";
 /// Local authoring, by convention: the default profile's `dlua_dir`.
@@ -276,13 +286,17 @@ fn read_project(dir: &Path) -> Result<Option<ProjectJson>> {
 /// The scaffold's standard source, as `project.json` carries sources: the
 /// same JSON `dollup.json` held, which drt never interprets.
 fn std_sources() -> Result<Vec<serde_json::Value>> {
-    Ok(match STD_REPO_KEY {
-        Some(key) => vec![serde_json::to_value(SourceEntry::Signed {
-            url: STD_REPO_URL.into(),
+    let Some(key) = STD_REPO_KEY else {
+        return Ok(vec![]);
+    };
+    let mut sources = vec![];
+    for url in [Some(STD_REPO_URL), STD_REPO_ZIP].into_iter().flatten() {
+        sources.push(serde_json::to_value(SourceEntry::Signed {
+            url: url.into(),
             keys: vec![key.into()],
-        })?],
-        None => vec![],
-    })
+        })?);
+    }
+    Ok(sources)
 }
 
 /// `root_id`: minted, random, never derived from content. It is the hinge

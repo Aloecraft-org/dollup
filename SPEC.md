@@ -237,7 +237,7 @@ nginx + a generation script + stable paths; Artifactory previously rejected
 as overkill), and `doc/RepoFormat.md` defines it.
 
 The standard source is `https://dollup.aloecraft.org/std-repo/`, with
-`zip+https://` against the public `dollup-std-lib` repo as its peer. The
+`zip+https://` against the public `drt-std-lib` repo as its peer. The
 scaffold names both, pointing at the same content: identity is the content
 hash, so they are interchangeable rather than ranked, and naming two costs
 nothing while buying resilience. Consequences:

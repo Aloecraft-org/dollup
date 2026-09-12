@@ -69,18 +69,19 @@ dollup get drt --version v0.3.0 --slim  # a pin, and the size profile
 dollup get drt --from file:///mnt/xfer  # air-gapped: a directory, no network
 ```
 
-There is a working repo in this checkout, so the consumer side below can
-be run against something real before you publish anything of your own:
+The standard repo lives in its own repository,
+[drt-std-lib](https://github.com/Aloecraft-org/drt-std-lib), and `init`
+pins it, so the consumer side below runs against something real before you
+publish anything of your own:
 
 ```sh
 dollup init
-dollup source add "file://$PWD/std-repo"   # an absolute path: file:// takes no relative one
 dollup pull hello
 dollup get drt && ./drt run .drt_root/init/hello.dlua      # a module lands at its name's path
 ```
 
 ```sh
-# Publisher side: a repo is a directory of packages.
+# Publisher side: a repo is a directory of packages, each stating its license.
 dollup repo keygen --out repo.key    # once, ever
 dollup repo publish ./my-repo --key-file repo.key --stage .publish
 rsync -avz --delete .publish/ user@host:/var/www/my-repo/
