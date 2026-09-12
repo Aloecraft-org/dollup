@@ -3,6 +3,7 @@
 //! act. SPEC.md is the map.
 
 mod audit;
+mod consent;
 pub mod deployment;
 mod fetch;
 mod home;
@@ -79,6 +80,25 @@ enum Verb {
     Verify,
     /// Sweep the store against the lock.
     Gc,
+    /// Review and accept this root's declared ceiling, without starting
+    /// anything: the same check `drt start` runs, with the same answers.
+    /// No terminal and no applicable flag is a refusal, never a hang.
+    Consent {
+        /// Accept a FIRST acceptance without asking. Nothing else: a
+        /// ceiling that widened since it was accepted takes
+        /// --accept-changes, so no unit file carries consent to all
+        /// future widening.
+        #[arg(short = 'y', long)]
+        yes: bool,
+        /// Accept a ceiling that widened since it was accepted, after the
+        /// delta is printed.
+        #[arg(long)]
+        accept_changes: bool,
+        /// Write the blanket operator entry: everything, forever, nothing
+        /// prompts again. The explicit opt-out, said out loud.
+        #[arg(long, conflicts_with_all = ["yes", "accept_changes"])]
+        all: bool,
+    },
     /// Check a root for likely issues: what `drt start` would do here,
     /// reported and never done. Safe on a root you do not trust — nothing
     /// executes, nothing is delegated, nothing is written.
@@ -440,6 +460,23 @@ fn main() -> Result<()> {
         Verb::Gc => {
             let d = Deployment::open(&dir, cfg)?;
             println!("swept {} blob(s)", ops::gc(&d)?);
+        }
+        Verb::Consent {
+            yes,
+            accept_changes,
+            all,
+        } => {
+            let lines = consent::consent(
+                &dir,
+                consent::Flags {
+                    yes,
+                    accept_changes,
+                    all,
+                },
+            )?;
+            for line in lines {
+                println!("{line}");
+            }
         }
         // Deliberately does NOT open a deployment: a root is `.drt_root/`
         // and its files, and audit reads those and nothing else.

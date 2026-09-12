@@ -173,6 +173,24 @@ dollup audit            # the root here, as `drt start` would see it
 dollup audit release    # as `drt start release` would
 ```
 
+## Consenting to a ceiling
+
+`dollup consent` reviews and accepts the root's declared ceiling without
+starting anything — the same check `drt start` runs, with the same
+answers. A first acceptance takes a yes on the terminal or `-y`; a ceiling
+that narrowed since it was accepted is updated silently; one that widened
+prints what changed and takes a yes or `--accept-changes`. `-y` does not
+accept a widening, on purpose: otherwise every unit file and CI job would
+carry permanent pre-consent to whatever the ceiling becomes. No terminal
+and no applicable flag is a refusal that names the flag, never a hang.
+`dollup consent --all` writes the blanket operator entry — everything,
+forever, nothing prompts again — which is the explicit opt-out, and audit
+reports it as such.
+
+The deploy order on a box, once a ceiling has widened: push, then
+`dollup consent` on the operator's terminal, then restart. Restart is where
+consent fires, with no terminal, so the other order is an outage by design.
+
 ## Building
 
 ```
