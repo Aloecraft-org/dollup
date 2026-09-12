@@ -6,13 +6,15 @@ resolver = "2"
 members = ["crates/dollup-format", "crates/dollup"]
 
 [workspace.package]
-version = "0.0.2"
+version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/Aloecraft-org/dollup"
 
 [workspace.dependencies]
-dollup-format = { path = "crates/dollup-format", version = "0.0.2" }
+# A path dependency needs no version -- this workspace is not published to
+# crates.io -- and a version here would be a second place to bump.
+dollup-format = { path = "crates/dollup-format" }
 # The shared formats and the signing helper (consent.md; the seven-point
 # list). Pinned to a rev, never a branch: nothing mutable is ever a pin.
 drt-config = { git = "https://github.com/Aloecraft-org/diluvium-drt", rev = "eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c" } # v0.6.0rc1

@@ -49,14 +49,14 @@ const ASSETS: [&str; 6] = [
 ];
 
 /// The same, under the artifact names doc/ALIGNMENT.md §4 aligns every
-/// project on: the profile last, `musl` where `static` was, `aarch64`
-/// where `arm64` was.
+/// project on: the profile last, `musl` where `static` was, `arm64` the
+/// token everywhere.
 const ALIGNED_ASSETS: [&str; 6] = [
     "drt_linux_x86_64_musl",
-    "drt_darwin_aarch64",
+    "drt_darwin_arm64",
     "drt_darwin_x86_64",
     "drt_linux_x86_64_musl_slim",
-    "drt_darwin_aarch64_slim",
+    "drt_darwin_arm64_slim",
     "drt_darwin_x86_64_slim",
 ];
 

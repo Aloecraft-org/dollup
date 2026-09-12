@@ -42,7 +42,7 @@ release, `DOLLUP_PREFIX` picks the directory, and `DOLLUP_SOURCE` points
 at a directory laid out like the mirror, including a `file://` one, which
 is the air-gapped install. The assets are named as every Aloecraft release
 names them (`doc/ALIGNMENT.md`): `dollup_linux_x86_64_musl`,
-`dollup_darwin_aarch64`, `dollup_darwin_x86_64`, plus `BUILDINFO.txt`,
+`dollup_darwin_arm64`, `dollup_darwin_x86_64`, plus `BUILDINFO.txt`,
 `SHA256SUMS.txt` and `install.sh` itself. Or build it: `cargo build
 --release -p dollup`.
 
@@ -270,7 +270,9 @@ binary that needs nothing else installed.
 
 The version and the release notes each have one source. `.technoproj`
 holds the version a human edits (`make version`, `make tag`, `make inc_pat`,
-`make set_pre kind=rc n=1`); `CHANGELOG.yaml` holds the notes, and
+`make set_pre kind=rc n=1`), and the changelog's `version`, `Cargo.toml`
+and `BUILDINFO.txt` all hold the tag body it prints — `0.1.0-rc.1` for the
+tag `v0.1.0-rc.1` — which CI checks. `CHANGELOG.yaml` holds the notes, and
 `script/changelog.py generate` writes `CHANGELOG.md` and `changelog.json`
 from it, which CI keeps in step (`make changelog-check`). The release
 workflow is gated on that file: the tag must have an entry, `prerelease`

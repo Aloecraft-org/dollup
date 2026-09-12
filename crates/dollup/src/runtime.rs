@@ -62,10 +62,11 @@ pub(crate) fn origin_for(tag: &str) -> String {
 }
 
 /// The asset names a drt release may carry for this platform, newest
-/// spelling first: `doc/ALIGNMENT.md` §4 (`drt_linux_x86_64_musl`,
-/// `drt_darwin_aarch64`, the profile last) and the spelling every release
-/// up to 0.6.0rc1 used (`drt_linux_static_x86_64`, `drt_darwin_arm64`, the
-/// profile first). Which one a release carries is read off its
+/// spelling first: `doc/ALIGNMENT.md` §4 (`drt_linux_x86_64_musl`, the
+/// profile last, `arm64` the token on every OS) and the spelling every
+/// release up to 0.6.0rc1 used (`drt_linux_static_x86_64`, the profile
+/// first). On darwin the two coincide for the full profile, so one name
+/// comes back. Which spelling a release carries is read off its
 /// `SHA256SUMS.txt`, never inferred from a version: the name is a handle
 /// and the sums are the fact, which is the alignment rule itself.
 pub(crate) fn asset_names(slim: bool) -> Result<Vec<String>> {
@@ -75,17 +76,18 @@ pub(crate) fn asset_names(slim: bool) -> Result<Vec<String>> {
         "windows" => ("windows", "windows", "", ".exe"),
         other => bail!("{other} has no prebuilt DRT yet; build it from source"),
     };
-    let (arch_new, arch_old) = match std::env::consts::ARCH {
-        "x86_64" => ("x86_64", "x86_64"),
-        "aarch64" => ("aarch64", "arm64"),
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "arm64",
         other => bail!("{other} has no prebuilt DRT yet"),
     };
     let profile = if slim { "_slim" } else { "" };
-    let old_profile = if slim { "_slim" } else { "" };
-    Ok(vec![
-        format!("drt_{os_new}_{arch_new}{libc}{profile}{ext}"),
-        format!("drt{old_profile}_{os_old}_{arch_old}{ext}"),
-    ])
+    let mut names = vec![
+        format!("drt_{os_new}_{arch}{libc}{profile}{ext}"),
+        format!("drt{profile}_{os_old}_{arch}{ext}"),
+    ];
+    names.dedup();
+    Ok(names)
 }
 
 /// The asset for this platform that a directory already holds, under
@@ -569,7 +571,7 @@ ccc  BUILDINFO.txt
         // Only assert the shape on the platform the test runs on.
         let full = asset_names(false).unwrap();
         let slim = asset_names(true).unwrap();
-        assert_eq!(full.len(), 2);
+        assert!(!full.is_empty() && full.len() <= 2, "{full:?}");
         assert!(full.iter().all(|n| n.starts_with("drt_")), "{full:?}");
         assert!(slim.iter().all(|n| n.contains("slim")), "{slim:?}");
         // The alignment spelling puts the profile last; the older one put
@@ -578,10 +580,14 @@ ccc  BUILDINFO.txt
             slim[0].ends_with("_slim") || slim[0].ends_with("_slim.exe"),
             "{slim:?}"
         );
-        assert!(slim[1].starts_with("drt_slim_"), "{slim:?}");
+        assert!(slim.last().unwrap().starts_with("drt_slim_"), "{slim:?}");
         if cfg!(target_os = "linux") {
-            assert_eq!(full[0], "drt_linux_x86_64_musl");
-            assert_eq!(full[1], "drt_linux_static_x86_64");
+            assert_eq!(full, ["drt_linux_x86_64_musl", "drt_linux_static_x86_64"]);
+        }
+        // `arm64` is the token on every OS, so a darwin full binary has one
+        // name under both spellings and is asked for once.
+        if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            assert_eq!(full, ["drt_darwin_arm64"]);
         }
     }
 }

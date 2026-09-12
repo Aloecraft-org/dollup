@@ -38,10 +38,15 @@ Usage:
                                             facts as `key: value` lines,
                                             for BUILDINFO.txt
 
-Version spellings (doc/ALIGNMENT.md §1): the entry's `version` is PEP 440
-(0.4.0, 0.4.0rc1, 0.4.0.dev7); the tag derives from it as SemVer with a
-`v` (v0.4.0, v0.4.0-rc.1, v0.4.0-dev.7). A dev tag has no entry of its
-own: it is a build of the newest entry's version from one commit.
+Version spellings (doc/ALIGNMENT.md §1): the entry's `version` is the tag
+body -- the tag without its `v` -- so `tag_rule: exact` is `tag == "v" +
+version` for every entry, old and new alike. A new entry spells it as
+SemVer (0.4.0, 0.4.0-rc.1, 0.4.0-dev.7); an entry from before the scheme
+keeps the spelling its tag has (0.5.0rc9), because existing tags are never
+respelled. PEP 440 (0.4.0rc1) is a derived spelling for `stamps` in a
+project that publishes to PyPI, never the canonical one. A dev tag has no
+entry of its own: it is a build of the newest entry's version from one
+commit.
 
 Why the generated files are committed: the release mirror runs on a host
 with a stdlib-only Python and no build step, so it reads changelog.json
@@ -143,23 +148,33 @@ KNOWN = SCALARS | set(MAPPING_KEYS) | {k for k, _ in SECTIONS}
 
 # depth: version spellings
 
-VERSION = re.compile(r"^(\d+\.\d+\.\d+)(?:(a|b|rc)(\d+)|\.dev(\d+))?$")
+# The canonical grammar (ALIGNMENT §1) and the one every tag before the
+# scheme used. Both parse to the same triple so a changelog can hold both
+# without rewriting a single entry.
+SEMVER = re.compile(r"^(\d+\.\d+\.\d+)(?:-(dev|alpha|beta|rc)\.(\d+))?$")
+LEGACY = re.compile(r"^(\d+\.\d+\.\d+)(?:(a|b|rc)(\d+)|\.dev(\d+))?$")
 DEV_TAG = re.compile(r"^v(\d+\.\d+\.\d+)-dev\.(\d+)$")
 KINDS = {"a": "alpha", "b": "beta", "rc": "rc"}
+PEP440_KINDS = {"alpha": "a", "beta": "b", "rc": "rc"}
 
 
 def parse_version(v):
-    """PEP 440 -> (base, kind, n), kind one of None/alpha/beta/rc/dev.
-    None when it is not a shape ALIGNMENT §1 allows."""
-    m = VERSION.match(str(v))
-    if not m:
-        return None
-    base, kind, n, dev = m.groups()
-    if dev is not None:
-        return base, "dev", int(dev)
-    if kind:
-        return base, KINDS[kind], int(n)
-    return base, None, None
+    """A version -> (base, kind, n), kind one of None/dev/alpha/beta/rc.
+    None when it is neither the canonical spelling nor the legacy one."""
+    v = str(v)
+    m = SEMVER.match(v)
+    if m:
+        base, kind, n = m.groups()
+        return base, kind, (int(n) if n is not None else None)
+    m = LEGACY.match(v)
+    if m:
+        base, kind, n, dev = m.groups()
+        if dev is not None:
+            return base, "dev", int(dev)
+        if kind:
+            return base, KINDS[kind], int(n)
+        return base, None, None
+    return None
 
 
 def to_semver(v):
@@ -170,20 +185,33 @@ def to_semver(v):
     return base if kind is None else "%s-%s.%d" % (base, kind, n)
 
 
-def to_tag(v):
-    s = to_semver(v)
-    return None if s is None else "v" + s
-
-
-def spell(v, spelling):
+def to_pep440(v):
     parsed = parse_version(v)
     if not parsed:
         return None
+    base, kind, n = parsed
+    if kind is None:
+        return base
+    if kind == "dev":
+        return "%s.dev%d" % (base, n)
+    return "%s%s%d" % (base, PEP440_KINDS[kind], n)
+
+
+def to_tag(v):
+    """The tag is `v` plus the version as the entry spells it: canonical
+    for a new entry, legacy for one that predates the scheme."""
+    return "v" + str(v)
+
+
+def spell(v, spelling):
     if spelling == "base":
-        return parsed[0]
+        parsed = parse_version(v)
+        return parsed[0] if parsed else None
     if spelling == "semver":
         return to_semver(v)
-    return str(v)
+    if spelling == "pep440":
+        return to_pep440(v)
+    return None
 
 
 # depth: loading and validation
@@ -253,8 +281,8 @@ def validate(doc):
         seen_v.add(v)
         parsed = parse_version(v)
         if not parsed:
-            bad.append("%s: version is not PEP 440 of the shapes X.Y.Z, "
-                       "X.Y.Z{a,b,rc}N or X.Y.Z.devN" % where)
+            bad.append("%s: version is not X.Y.Z, X.Y.Z-{dev,alpha,beta,rc}.N, "
+                       "or a legacy X.Y.Z{a,b,rc}N" % where)
         elif parsed[1] == "dev":
             bad.append("%s: a dev build has no entry of its own -- it is a "
                        "build of the newest entry's version" % where)
@@ -264,7 +292,7 @@ def validate(doc):
             if tag in seen_t:
                 bad.append("%s: duplicate tag %s" % (where, tag))
             seen_t.add(tag)
-            if DECL["tag_rule"] == "exact" and parsed and tag != to_tag(v):
+            if DECL["tag_rule"] == "exact" and tag != to_tag(v):
                 bad.append("%s: tag %r should be %r" % (where, tag, to_tag(v)))
             elif DECL["tag_rule"] == "prefix" and not tag.startswith("v"):
                 bad.append("%s: tag %r does not start with v" % (where, tag))
@@ -349,7 +377,7 @@ def heading(r, dev=None):
     date = r.get("date") or "unreleased"
     if dev:
         base, n = dev
-        text = "## [%s.dev%d] - dev build %d of %s" % (base, n, n, base)
+        text = "## [%s-dev.%d] - dev build %d of %s" % (base, n, n, base)
         return text + " (prerelease; the commit is in BUILDINFO.txt)"
     text = "## [%s] - %s" % (r["version"], date)
     marks = []
@@ -530,7 +558,7 @@ def release_check(doc, tag, publishing):
     tag needs no entry of its own and is always a prerelease."""
     if DEV_TAG.match(tag):
         r, (base, n) = entry_for(doc, tag)
-        return [], {"prerelease": "true", "version": "%s.dev%d" % (base, n),
+        return [], {"prerelease": "true", "version": "%s-dev.%d" % (base, n),
                     "dev": "true"}
     entry = next((r for r in doc["releases"] if tag_of(r) == tag), None)
     if entry is None:

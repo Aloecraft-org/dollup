@@ -71,6 +71,7 @@ jobs:
       - id: check
         env:
           EVENT: ${{ github.event_name }}
+          IN_REF: ${{ inputs.ref }}
           IN_TAG: ${{ inputs.tag }}
           IN_PUBLISH: ${{ inputs.publish }}
         run: |
@@ -93,11 +94,20 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          # The branch this commit is on, for BUILDINFO: a tag checkout is
-          # detached, so ask which remote branch points here.
-          BRANCH=$(git for-each-ref --points-at HEAD --format='%(refname:short)' refs/remotes/origin \
-                   | sed 's|^origin/||' | grep -v '^HEAD$' | head -1)
-          echo "branch=${BRANCH:-unknown}" >> "$GITHUB_OUTPUT"
+          # The branch, for BUILDINFO (doc/ALIGNMENT.md §5): a tag push
+          # carries none, so derive it and record what was found rather
+          # than a guess; a dispatch names its ref, which is authoritative
+          # when it is a branch.
+          SHA=$(git rev-parse HEAD)
+          BRANCH=""
+          if [ "$EVENT" != push ] && [ -n "${IN_REF:-}" ] \
+             && git show-ref -q --verify "refs/remotes/origin/$IN_REF"; then
+            BRANCH="$IN_REF"
+          else
+            BRANCH=$(git branch -r --contains "$SHA" --format='%(refname:lstrip=3)' \
+                     | grep -vx HEAD | head -1)
+          fi
+          echo "branch=${BRANCH:-(detached)}" >> "$GITHUB_OUTPUT"
       # The changelog is a release gate, not a formality: CHANGELOG.yaml is
       # what the release body and the mirror are generated from, so a tag
       # with no entry -- or an entry still marked unreleased -- would
@@ -130,7 +140,7 @@ jobs:
           set -eu
           full='{"include":[
             {"name":"linux_x86_64_musl","os":"ubuntu-latest","target":"x86_64-unknown-linux-musl","setup":"sudo apt-get update && sudo apt-get install -y musl-tools"},
-            {"name":"darwin_aarch64","os":"macos-latest","target":"aarch64-apple-darwin","setup":"true"},
+            {"name":"darwin_arm64","os":"macos-latest","target":"aarch64-apple-darwin","setup":"true"},
             {"name":"darwin_x86_64","os":"macos-15-intel","target":"x86_64-apple-darwin","setup":"true"}]}'
           dev='{"include":[
             {"name":"linux_x86_64_musl","os":"ubuntu-latest","target":"x86_64-unknown-linux-musl","setup":"sudo apt-get update && sudo apt-get install -y musl-tools"}]}'
@@ -249,6 +259,13 @@ jobs:
           # install.sh ships as a release asset so the curl|sh front door has
           # a URL that exists with no server-side work.
           cp install.sh release_dist/install.sh
+          # A rename publishes both names for one release (doc/ALIGNMENT.md
+          # §4): the Linux binary is also published under the name every
+          # release up to v0.0.1 used, so anything fetching it by that name
+          # keeps working through this release. Drop this line in the next.
+          if [ -f release_dist/dollup_linux_x86_64_musl ]; then
+            cp release_dist/dollup_linux_x86_64_musl release_dist/dollup_linux_static_x86_64
+          fi
           # The five lines every Aloecraft release carries (doc/ALIGNMENT.md
           # §5), then this project's own compatibility facts -- the same
           # ones the changelog entry states, printed by the same tool, so

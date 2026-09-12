@@ -21,8 +21,9 @@ GITHUB="https://github.com/Aloecraft-org/dollup/releases"
 VERSION="${DOLLUP_VERSION:-latest}"
 
 # The aligned name (doc/ALIGNMENT.md §4: os, arch, libc where it matters)
-# and the name every release up to v0.0.1 used. Which one a release
-# carries is read off its SHA256SUMS.txt, never guessed from a version.
+# and the name every release up to v0.0.1 used -- they differ on Linux
+# only. Which one a release carries is read off its SHA256SUMS.txt, never
+# guessed from a version.
 case "$(uname -s)" in
   Linux)  NEW_OS=linux; OLD_OS=linux_static; LIBC=_musl ;;
   Darwin) NEW_OS=darwin; OLD_OS=darwin; LIBC= ;;
@@ -30,7 +31,7 @@ case "$(uname -s)" in
 esac
 case "$(uname -m)" in
   x86_64|amd64)  NEW_ARCH=x86_64; OLD_ARCH=x86_64 ;;
-  arm64|aarch64) NEW_ARCH=aarch64; OLD_ARCH=arm64 ;;
+  arm64|aarch64) NEW_ARCH=arm64; OLD_ARCH=arm64 ;;
   *) echo "install.sh: $(uname -m) has no prebuilt dollup yet" >&2; exit 1 ;;
 esac
 NEW_ASSET="dollup_${NEW_OS}_${NEW_ARCH}${LIBC}"

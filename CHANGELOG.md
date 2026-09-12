@@ -12,9 +12,9 @@ than encoding it: each entry names the repo format it reads and writes and
 the drt-config revision it embeds, the same facts `BUILDINFO.txt` carries
 in the release. See `doc/ALIGNMENT.md`.
 
-## [0.0.2] - unreleased
+## [0.1.0] - unreleased
 
-`v0.0.2` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`
+`v0.1.0` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`
 
 A root is a directory, and dollup fills it. `init` writes
 `.drt_root/` with a declared ceiling, `consent` accepts it, `audit`
@@ -29,6 +29,10 @@ The standard repo moves to its own repository, `drt-std-lib`; a
 package states its license; a source that cannot be read is passed
 over; a release the mirror does not carry is taken from the origin;
 and this release's own artifacts take the aligned names.
+
+A minor, not a patch, and the first release under the aligned scheme
+(doc/ALIGNMENT.md): the artifact names and what BUILDINFO.txt carries
+change, which is user-visible.
 
 ### Added
 
@@ -50,7 +54,7 @@ and this release's own artifacts take the aligned names.
 - `license` in the package manifest, an SPDX expression: required to publish, optional to read, carried into the index and the lock so `ls` and `info` answer offline.
 - Templates: the one package shape that may carry config. `dollup pull <template>` copies it and never locks it.
 - A release the mirror does not carry is taken from the origin's download directory for the tag, and said; `latest` never falls back. `DOLLUP_DRT_MIRROR` and `DOLLUP_DRT_RELEASES` replace the two bases.
-- A drt release is read under either artifact spelling, chosen by its own SHA256SUMS.txt, so the aligned names and the ones every release up to 0.6.0rc1 carries both pull.
+- A drt release is read under either artifact spelling, chosen by its own SHA256SUMS.txt, so the aligned names (`drt_linux_x86_64_musl`, the profile last) and the ones every release up to 0.6.0rc1 carries both pull.
 - The site contract: `site/build.sh` builds dollup.aloecraft.org hermetically and never deploys.
 - `.technoproj`, `CHANGELOG.yaml` and `script/changelog.py`: the version and the release notes have one source each, and the release workflow derives its prerelease flag and its body from the changelog (doc/ALIGNMENT.md).
 
@@ -70,10 +74,11 @@ and this release's own artifacts take the aligned names.
 
 ### Upgrading
 
-- **The artifacts are renamed** (doc/ALIGNMENT.md §4):
-  `dollup_linux_static_x86_64` is `dollup_linux_x86_64_musl`,
-  `dollup_darwin_arm64` is `dollup_darwin_aarch64`,
-  `dollup_darwin_x86_64` is unchanged. `install.sh` knows both.
+- **The Linux artifact is renamed** (doc/ALIGNMENT.md §4):
+  `dollup_linux_static_x86_64` is `dollup_linux_x86_64_musl`. This
+  release publishes both names; the next drops the old one. The
+  darwin names are already the aligned ones (`arm64` is the token)
+  and do not change. `install.sh` knows both spellings.
 - **`init` writes a root, not a `dollup.json` app.** An existing
   `dollup.json` app keeps working through `-c dollup.json`; a new
   directory gets `.drt_root/` with `project.json`, `consent.json`,

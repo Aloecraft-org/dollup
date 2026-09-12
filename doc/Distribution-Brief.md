@@ -219,6 +219,11 @@ false`, `mirror: false`. What it means here:
    uses.
 2. The deploy overlay decision (§4), which also decides the `commit`
    behaviour on development roots.
+2a. The pin normaliser (`doc/ALIGNMENT.md` §10): a pure function in
+   drt-config that compares `0.5.0rc9` and `0.5.0-rc.9` equal for one
+   cycle. dollup's audit and deploy compare pins as strings today and will
+   call it the day it exists; until then a root pinned under the old
+   spelling mismatches a binary tagged under the new one, on both sides.
 3. Whether `requires.features` will be checked at admission, so dollup
    knows whether to carry the field.
 
@@ -246,7 +251,8 @@ driven changelog engine, a release workflow that derives its prerelease
 flag, its body and its BUILDINFO facts from the changelog, aligned artifact
 names, a mirror-first installer, and a nightly dev build. Next: scaffold
 the zip peer once drt-std-lib is signed (one constant, `root::STD_REPO_ZIP`),
-and cut v0.0.2 through the workflow, which turns dollup's mirror entry
+and cut v0.1.0 through the workflow (revision 3 of the alignment makes
+the first conforming release a minor), which turns dollup's mirror entry
 `source: changelog`.
 
 ## 6. Order of work
