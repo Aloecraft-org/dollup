@@ -125,6 +125,20 @@ pub fn audit(dir: &Path, profile: Option<&str>) -> Result<Report> {
         report.block(line);
     }
     render(&mut report, &res, Some(&binary));
+    // The one audit line that looks beyond this root: a root_id another
+    // root on this box also holds is a `cp -r`, and `dollup duplicate` —
+    // which mints a fresh one — is what should have been used. Read from
+    // the list, checked against disk, and audit adds itself to no list.
+    if let Some(project) = inputs.root.as_ref().and_then(|r| r.project.as_ref()) {
+        for other in crate::roots::others_claiming(project.root_id, dir) {
+            report.lines.push(format!(
+                "note: another root on this box claims root_id {}: {} (a cp -r, not \
+                 `dollup duplicate`, which mints a fresh one)",
+                project.root_id,
+                other.display()
+            ));
+        }
+    }
     Ok(report)
 }
 

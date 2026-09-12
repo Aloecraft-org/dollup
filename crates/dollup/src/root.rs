@@ -258,6 +258,7 @@ pub fn init(dir: &Path, name: Option<&str>, profile: Option<&str>) -> Result<Vec
     } else {
         done.insert(0, format!("kept  {}", rel(dir, &descriptor)));
     }
+    crate::roots::register(dir, project.root_id);
     Ok(done)
 }
 

@@ -11,6 +11,7 @@ mod http;
 mod ops;
 mod repo;
 mod root;
+mod roots;
 mod runtime;
 mod snap;
 mod store;
@@ -99,6 +100,10 @@ enum Verb {
         #[arg(long, conflicts_with_all = ["yes", "accept_changes"])]
         all: bool,
     },
+    /// Every root on this box: roots on disk, not deployments running.
+    /// Recorded whenever a verb opens one, checked against disk when shown;
+    /// a root removed with rm -rf is reported stale, never dropped.
+    Roots,
     /// Check a root for likely issues: what `drt start` would do here,
     /// reported and never done. Safe on a root you do not trust — nothing
     /// executes, nothing is delegated, nothing is written.
@@ -478,8 +483,14 @@ fn main() -> Result<()> {
                 println!("{line}");
             }
         }
+        Verb::Roots => {
+            for line in roots::report()? {
+                println!("{line}");
+            }
+        }
         // Deliberately does NOT open a deployment: a root is `.drt_root/`
-        // and its files, and audit reads those and nothing else.
+        // and its files, and audit reads those and nothing else — the list
+        // of roots included, which it reads and never adds itself to.
         Verb::Audit { profile } => {
             let report = audit::audit(&dir, profile.as_deref())?;
             for line in &report.lines {

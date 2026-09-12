@@ -173,6 +173,17 @@ dollup audit            # the root here, as `drt start` would see it
 dollup audit release    # as `drt start release` would
 ```
 
+## Roots on this box
+
+`dollup roots` lists every root dollup has seen on this machine — roots on
+disk, not deployments running. Any verb that opens a root records it in
+`~/.dollup/roots.json`, so a root copied with `cp -r` is on the list the
+first time anyone touches it, and it is named there as sharing a `root_id`
+with the original (which is what `dollup duplicate` exists to avoid). A
+root removed with `rm -rf` stays on the list, reported as stale, never
+silently dropped. `audit` reads the list and is the one verb that never
+joins it: it writes nothing.
+
 ## Consenting to a ceiling
 
 `dollup consent` reviews and accepts the root's declared ceiling without

@@ -52,6 +52,7 @@ pub fn consent(dir: &Path, flags: Flags) -> Result<Vec<String>> {
     let project_path = root::project_path(dir);
     let project: ProjectJson = serde_json::from_slice(&std::fs::read(&project_path)?)
         .with_context(|| format!("{} does not parse", project_path.display()))?;
+    crate::roots::register(dir, project.root_id);
     let consent_path = root::consent_path(dir);
     let mut consent_json = if consent_path.is_file() {
         serde_json::from_slice::<ConsentJson>(&std::fs::read(&consent_path)?)

@@ -112,6 +112,9 @@ impl Deployment {
             code_root: PathBuf::from(ROOT_DIR).join(INIT_DIR),
         };
         let lock = read_lock(&root::lock_path(dir))?;
+        // Every verb that opens a root records it, so a root copied with
+        // `cp -r` is on the list the first time anyone touches it.
+        crate::roots::register(dir, project.root_id);
         Ok(Deployment {
             dir: dir.to_path_buf(),
             layout: Layout::Root { project },

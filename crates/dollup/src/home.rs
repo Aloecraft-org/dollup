@@ -5,9 +5,8 @@
 //! on it: a root is self-contained — tar it and move it and it runs — and a
 //! link from a root into this directory would make it not so. What lives
 //! here is keys, the cache of pulled packages and drt versions, and the list
-//! of roots on this box. Today only the cache is read, by `audit`, and
-//! nothing here is written: `dollup pull` is the cache fill, and it is not
-//! built yet.
+//! of roots on this box (`roots.json`, written by every verb that opens a
+//! root). The cache is read by `audit` and filled by `dollup pull`.
 
 use std::path::PathBuf;
 
@@ -29,4 +28,9 @@ pub fn drt_sums_path(version: &str) -> Option<PathBuf> {
             .join(version)
             .join("SHA256SUMS.txt")
     })
+}
+
+/// The list of roots on this box, kept by [`crate::roots`].
+pub fn roots_path() -> Option<PathBuf> {
+    dollup_home().map(|h| h.join("roots.json"))
 }
