@@ -51,7 +51,7 @@ the interchangeability and buys resilience for nothing:
 ```json
 "sources": [
   "https://dollup.aloecraft.org/std-repo/",
-  "zip+https://github.com/Aloecraft-org/dollup-standard/archive/refs/heads/main.zip"
+  "zip+https://github.com/Aloecraft-org/dollup-std-lib/archive/refs/heads/main.zip"
 ]
 ```
 
@@ -367,7 +367,7 @@ public keys:
 "sources": [
   { "url": "https://dollup.aloecraft.org/std-repo/",
     "keys": ["ed25519:BASE64…"] },
-  { "url": "zip+https://github.com/Aloecraft-org/dollup-standard/archive/refs/heads/main.zip",
+  { "url": "zip+https://github.com/Aloecraft-org/dollup-std-lib/archive/refs/heads/main.zip",
     "keys": ["ed25519:BASE64…"] }
 ]
 ```
