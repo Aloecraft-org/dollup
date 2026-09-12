@@ -8,9 +8,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-fn dollup() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_dollup"))
-}
+mod common;
+use common::dollup;
 
 fn run(cmd: &mut Command) -> String {
     let out = cmd.output().unwrap();

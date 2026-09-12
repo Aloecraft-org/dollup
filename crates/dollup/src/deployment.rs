@@ -13,6 +13,7 @@ use dollup_format::{Lockfile, SourceEntry};
 use drt_config::project::{ProjectJson, INIT_DIR, ROOT_DIR};
 use serde::{Deserialize, Serialize};
 
+use crate::home;
 use crate::root;
 
 pub const CONFIG_FILE: &str = "dollup.json";
@@ -198,11 +199,17 @@ impl Deployment {
         self.dir.join(&self.config.code_root)
     }
 
-    /// dollup's blob store for this deployment. Beside `.drt_root/`, not
-    /// in it: a root is self-contained without it — `verify` and `gc` are
-    /// what read it — and it moves to `~/.dollup/cache/` with `pull`.
-    pub fn store_dir(&self) -> PathBuf {
-        self.dir.join(".dollup").join("store")
+    /// The blob store. A root's is the cache every root on this box shares,
+    /// `~/.dollup/cache/store` — a root is self-contained without it, and
+    /// `pull` refills it — so a root with no HOME to keep a cache in is a
+    /// named failure. An app keeps the store it always had, beside itself.
+    pub fn store_dir(&self) -> Result<PathBuf> {
+        match &self.layout {
+            Layout::Root { .. } => home::cache_store().ok_or_else(|| {
+                anyhow::anyhow!("dollup keeps its cache in ~/.dollup/cache, and HOME is not set")
+            }),
+            Layout::Legacy { .. } => Ok(self.dir.join(".dollup").join("store")),
+        }
     }
 }
 

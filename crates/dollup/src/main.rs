@@ -54,14 +54,18 @@ enum Verb {
         /// `release.config.json` are the same request.
         profile: Option<String>,
     },
-    /// Copy a starter template into this app: files you own and edit, not
-    /// a locked dependency. Starts an app here if there is not one.
+    /// Make a directory and start a root in it: `dollup new my_app` is
+    /// `mkdir my_app && cd my_app && dollup init my_app`. Never takes a
+    /// ref — a starting point is a package you pull.
     New {
-        /// `name`, `name@^1.2`, or `<source-url>#name`.
-        r#ref: String,
+        /// The directory, which names the project.
+        name: String,
     },
-    /// Fetch a package (and its dependencies), lock, populate. Inert.
-    Add {
+    /// Fetch a package (and its dependencies) through the cache into
+    /// init/, and lock it. A starting point — a template — is copied
+    /// instead and never locked: those files are yours to edit. Inert
+    /// either way; nothing runs.
+    Pull {
         /// `name`, `name@^1.2`, or `<source-url>#name@^1.2`.
         r#ref: String,
         /// Also materialize wasm host faces (component, js).
@@ -72,6 +76,13 @@ enum Verb {
         /// what it does.
         #[arg(long)]
         with_host_native: bool,
+    },
+    /// Not a verb any more — `add` became `pull`. Caught so the old
+    /// spelling answers with the new one, arguments carried over.
+    #[command(hide = true)]
+    Add {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        rest: Vec<String>,
     },
     /// What the lock holds.
     Ls,
@@ -139,17 +150,13 @@ enum Verb {
         #[arg(long, value_name = "DIR")]
         out: Option<PathBuf>,
     },
-    /// Not verbs yet — `push` and `pull` are reserved for shipping a whole
-    /// root, which is not built. Caught because they used to be the
-    /// snapshot transport: the old spelling answers with the new one
-    /// rather than "unrecognized subcommand".
+    /// Not a verb yet — `push` is reserved for shipping a whole root, which
+    /// is not built. Caught because it used to be the snapshot transport:
+    /// the old spelling answers with the new one rather than "unrecognized
+    /// subcommand". (`pull` is a verb again, for packages; a bare URL
+    /// handed to it gets the same courtesy inside.)
     #[command(hide = true)]
     Push {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        rest: Vec<String>,
-    },
-    #[command(hide = true)]
-    Pull {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         rest: Vec<String>,
     },
@@ -340,40 +347,72 @@ fn main() -> Result<()> {
             println!();
             println!("  drt start            deploy dlua/ to live/ and run it");
             println!("  dollup audit         what start would do, without doing it");
-            println!("  dollup add hello     install a program from the standard source");
+            println!("  dollup pull hello    install a program from the standard source");
         }
-        Verb::New { r#ref } => {
-            // An empty directory is the common case, so make it work rather
-            // than sending someone to run init first.
-            // Respect --config / DOLLUP_CONFIG: the app's config need not be
-            // at <dir>/dollup.json, so ask where it actually is.
-            if !Deployment::exists(&dir, cfg) {
-                Deployment::init(&dir, cfg)?;
+        Verb::New { name } => {
+            if name.contains('@') || name.contains('#') {
+                anyhow::bail!(
+                    "`new` takes a directory name, never a ref; a starting point is a package \
+                     you pull:\n  {} pull {name}",
+                    me()
+                );
             }
-            let mut d = Deployment::open(&dir, cfg)?;
-            let r: Ref = r#ref.parse()?;
-            for line in ops::new_from_template(&mut d, &r)? {
-                println!("{line}");
+            let path = dir.join(&name);
+            // The project is named for the directory, whatever path led
+            // to it; the reserved names are refused inside init.
+            let project = std::path::Path::new(&name)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| name.clone());
+            println!("Root at {}", path.display());
+            for line in root::init(&path, Some(project.as_str()), None)? {
+                println!("  {line}");
             }
             println!();
-            println!("These files are yours now — edit them. To run it:");
-            println!();
-            println!("  drt run --config app.json");
+            println!("  cd {name}");
+            println!("  drt start            deploy dlua/ to live/ and run it");
         }
-        Verb::Add {
+        Verb::Pull {
             r#ref,
             with_host,
             with_host_native,
         } => {
+            // A bare URL is a remote, not a package — and it is what the
+            // snapshot transport used to take here. Say which spelling
+            // does what rather than "in none of the sources".
+            if dollup_format::source::Scheme::of(&r#ref).is_ok() {
+                let me = me();
+                anyhow::bail!(
+                    "'{ref}' is a remote, not a package: `{me} pull <url>#<name>` pulls a \
+                     package from it, and `{me} snapshot pull <url> <name>` pulls a snapshot",
+                    ref = r#ref
+                );
+            }
             let mut d = Deployment::open(&dir, cfg)?;
             let r: Ref = r#ref.parse()?;
             let gates = ops::HostGates {
                 with_host: with_host || with_host_native,
                 with_host_native,
             };
-            for line in ops::add(&mut d, &r, gates)? {
+            let lines = ops::pull(&mut d, &r, gates)?;
+            let copied = lines.first().is_some_and(|l| l.starts_with("From "));
+            for line in lines {
                 println!("{line}");
             }
+            if copied {
+                println!();
+                println!("These files are yours now — edit them.");
+            }
+        }
+        Verb::Add { rest } => {
+            let me = me();
+            anyhow::bail!(
+                "`{me} add` is `{me} pull` now — a package is locked, a starting point is \
+                 copied, and the verb is the same:\n  \
+                 {me} pull{}{}",
+                if rest.is_empty() { "" } else { " " },
+                rest.join(" ")
+            );
         }
         Verb::Ls => {
             let d = Deployment::open(&dir, cfg)?;
@@ -464,7 +503,11 @@ fn main() -> Result<()> {
         }
         Verb::Gc => {
             let d = Deployment::open(&dir, cfg)?;
-            println!("swept {} blob(s)", ops::gc(&d)?);
+            let (swept, notes) = ops::gc(&d)?;
+            for note in notes {
+                eprintln!("note: {note}");
+            }
+            println!("swept {swept} blob(s)");
         }
         Verb::Consent {
             yes,
@@ -531,7 +574,6 @@ fn main() -> Result<()> {
             })?;
         }
         Verb::Push { rest } => snapshot_moved("push", &rest)?,
-        Verb::Pull { rest } => snapshot_moved("pull", &rest)?,
         Verb::Snapshot(v) => match v {
             SnapshotVerb::Push {
                 remote,

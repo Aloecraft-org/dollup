@@ -353,7 +353,11 @@ pub fn publish(
 /// been published broken.
 fn self_check(tree: &Path, pin: Option<&str>) -> Result<Vec<String>> {
     let scratch = tempfile::tempdir()?;
-    let mut d = crate::deployment::Deployment::init(scratch.path(), None)?;
+    // A `dollup.json` app rather than a root, deliberately: a throwaway
+    // must not join the list of roots on this box, nor fill the cache
+    // every root shares — its store lives and dies with the directory.
+    let config = scratch.path().join(crate::deployment::CONFIG_FILE);
+    let mut d = crate::deployment::Deployment::init(scratch.path(), Some(config.as_path()))?;
     // The scaffold names the public standard source, and the claim being
     // checked is about THIS tree alone -- so the self-check must not consult
     // anything else. Left in place, `add` would open the public source
@@ -380,9 +384,9 @@ fn self_check(tree: &Path, pin: Option<&str>) -> Result<Vec<String>> {
     let mut lines = vec![];
     // Every package in the tree, not a chosen one: the claim being checked
     // is that the published repo resolves, all of it. A template is
-    // resolved the way a user would -- `new`, into an app of its own, since
-    // two templates may ship the same filenames and `add` refuses a
-    // starting point by design.
+    // resolved the way a user would -- copied, into an app of its own,
+    // since two templates may ship the same filenames and a starting point
+    // is never locked by design.
     let mut template_apps = vec![];
     for name in parsed.packages.keys() {
         let r: Ref = name.parse()?;
@@ -391,7 +395,8 @@ fn self_check(tree: &Path, pin: Option<&str>) -> Result<Vec<String>> {
             .is_some_and(|(_, entry)| entry.template);
         if is_template {
             let app = scratch.path().join(format!("template-{name}"));
-            let mut t = crate::deployment::Deployment::init(&app, None)?;
+            let config = app.join(crate::deployment::CONFIG_FILE);
+            let mut t = crate::deployment::Deployment::init(&app, Some(config.as_path()))?;
             t.config.sources = d.config.sources.clone();
             t.save()?;
             lines.extend(crate::ops::new_from_template(&mut t, &r)?);

@@ -9,9 +9,8 @@ use std::process::Command;
 
 use sha2::Digest;
 
-fn dollup() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_dollup"))
-}
+mod common;
+use common::dollup;
 
 fn run(cmd: &mut Command) -> String {
     let out = cmd.output().unwrap();
@@ -74,7 +73,7 @@ fn migrate_a_sleeping_agent_between_machines() {
     // Machine A: deployment with the package, and a hibernated blob.
     let a = tmp.path().join("machine-a");
     init_deployment(&a, &repo);
-    run(dollup().arg("--deployment").arg(&a).args(["add", "agent"]));
+    run(dollup().arg("--deployment").arg(&a).args(["pull", "agent"]));
     let blob_path = a.join("night-clerk.dvsnap");
     fs::write(&blob_path, b"opaque heap bytes: dollup never parses these").unwrap();
 
@@ -236,11 +235,11 @@ fn the_old_spelling_answers_with_the_new_one() {
         "{msg}"
     );
     assert!(msg.contains("not built yet"), "{msg}");
-    let msg = fail(dollup().args(["pull", "file:///mnt/xfer", "night-clerk"]));
-    assert!(
-        msg.contains("snapshot pull file:///mnt/xfer night-clerk"),
-        "{msg}"
-    );
+    // `pull` is a verb again, for packages; a bare remote handed to it is
+    // told which spelling pulls what.
+    let msg = fail(dollup().args(["pull", "file:///mnt/xfer"]));
+    assert!(msg.contains("snapshot pull <url> <name>"), "{msg}");
+    assert!(msg.contains("pull <url>#<name>"), "{msg}");
 }
 
 #[test]

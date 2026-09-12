@@ -280,10 +280,13 @@ place it will show, and the fields are versioned with the envelope.
 `dollup init` (scaffold a root: `.drt_root/` with its descriptor — the
 standard sources, a minimal ceiling — consent to that ceiling, a default
 profile, preflight, and `dlua/app.dlua`; creates what is missing, never
-rewrites what exists), `dollup add <ref>` (fetch, lock, populate — inert), `update`, `lock`,
+rewrites what exists), `dollup new <name>` (a directory, and a root in it),
+`dollup pull <ref>` (fetch through the shared cache, lock, populate `init/`
+— inert; a template is copied and never locked), `update`, `lock`,
 `ls`, `info <ref>`, `verify` (re-hash store against lock), `snapshot push
 <remote> <blob>` (gated per §7), `snapshot pull <remote> <name>`, `gc`
-(collect the store against lockfiles and pinned snapshots), `audit` (what
+(sweep the shared cache against every recorded root's lock and pinned
+snapshots), `audit` (what
 `drt start` would do in a root, reported and never done — the same
 resolution the runtime runs, over the same files). Restore is a DRT verb;
 dollup only materializes. The bare `push` and `pull` are reserved for

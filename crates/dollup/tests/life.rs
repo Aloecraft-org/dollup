@@ -8,9 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn dollup() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_dollup"))
-}
+mod common;
+use common::dollup;
 
 fn run(cmd: &mut Command) -> String {
     let out = cmd.output().unwrap();
@@ -133,7 +132,7 @@ fn publish_sign_add_verify_tamper_gc() {
     let out = run(dollup()
         .arg("--deployment")
         .arg(&dep)
-        .args(["add", "telemetry@^1"]));
+        .args(["pull", "telemetry@^1"]));
     assert!(out.contains("telemetry 1.2.0"), "{out}");
     assert!(out.contains("can 0.1.0"), "dependency resolved: {out}");
     assert!(out.contains("signed"), "{out}");
@@ -170,7 +169,12 @@ fn publish_sign_add_verify_tamper_gc() {
         .unwrap();
     f.write_all(b"\n").unwrap();
     drop(f);
-    let msg = fail(dollup().arg("--deployment").arg(&dep2).args(["add", "can"]));
+    let msg = fail(
+        dollup()
+            .arg("--deployment")
+            .arg(&dep2)
+            .args(["pull", "can"]),
+    );
     assert!(msg.contains("signature verification failed"), "{msg}");
     index.truncate(index.len());
     fs::write(&index_path, &index).unwrap();
@@ -198,7 +202,7 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
     let out = run(dollup()
         .arg("--deployment")
         .arg(&dep)
-        .args(["add", "can", "--with-host"]));
+        .args(["pull", "can", "--with-host"]));
     assert!(out.contains("unsigned"), "{out}");
     assert!(
         dep.join(".drt_root/init/can/host/can.wasm").exists(),
@@ -216,7 +220,7 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
         run(dollup()
             .arg("--deployment")
             .arg(&dep2)
-            .args(["add", "can", "--with-host-native"]));
+            .args(["pull", "can", "--with-host-native"]));
     assert!(out.contains("can 0.1.0"), "{out}");
     assert!(
         dep2.join(".drt_root/init/can/host/libcan.so").exists(),
@@ -235,7 +239,12 @@ fn host_gates_admit_by_flag_and_unsigned_network_is_refused() {
         serde_json::to_vec_pretty(&cfg3).unwrap(),
     )
     .unwrap();
-    let msg = fail(dollup().arg("--deployment").arg(&dep3).args(["add", "can"]));
+    let msg = fail(
+        dollup()
+            .arg("--deployment")
+            .arg(&dep3)
+            .args(["pull", "can"]),
+    );
     assert!(msg.contains("unsigned network source refused"), "{msg}");
 }
 
@@ -261,7 +270,7 @@ fn zipball_of_the_same_repo_yields_the_same_identities() {
     )
     .unwrap();
 
-    run(dollup().arg("--deployment").arg(&dep).args(["add", "can"]));
+    run(dollup().arg("--deployment").arg(&dep).args(["pull", "can"]));
 
     // Same content through a different transport → the same package_id in
     // the lock. This is "identity is content" doing its job.
@@ -278,7 +287,7 @@ fn zipball_of_the_same_repo_yields_the_same_identities() {
     run(dollup()
         .arg("--deployment")
         .arg(&dep_dir)
-        .args(["add", "can"]));
+        .args(["pull", "can"]));
 
     let lock_a: serde_json::Value =
         serde_json::from_slice(&fs::read(dep.join(".drt_root/dollup.lock")).unwrap()).unwrap();
@@ -357,16 +366,16 @@ fn one_deployment_one_meaning_per_capability_name() {
 
     // can binds host:can; the identical vendored declaration passes; the
     // different one is refused naming both definers.
-    run(dollup().arg("--deployment").arg(&dep).args(["add", "can"]));
+    run(dollup().arg("--deployment").arg(&dep).args(["pull", "can"]));
     run(dollup()
         .arg("--deployment")
         .arg(&dep)
-        .args(["add", "can-vendored"]));
+        .args(["pull", "can-vendored"]));
     let msg = fail(
         dollup()
             .arg("--deployment")
             .arg(&dep)
-            .args(["add", "fastcan"]),
+            .args(["pull", "fastcan"]),
     );
     assert!(
         msg.contains("'fastcan' defines capability 'host:can'"),
@@ -387,7 +396,7 @@ fn one_deployment_one_meaning_per_capability_name() {
 }
 
 #[test]
-fn a_template_is_copied_and_never_locked() {
+fn a_template_is_pulled_as_a_copy_and_never_locked() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     write_package(
@@ -420,8 +429,9 @@ fn a_template_is_copied_and_never_locked() {
     )
     .unwrap();
 
-    let out = run(dollup().arg("--app").arg(&dep).args(["new", "starter"]));
+    let out = run(dollup().arg("--app").arg(&dep).args(["pull", "starter"]));
     assert!(out.contains("app.dlua"), "{out}");
+    assert!(out.contains("These files are yours now"), "{out}");
 
     // The template's own files land in the app and are NOT locked — you are
     // meant to edit them, and a locked file you edit is a verify failure.
@@ -443,15 +453,23 @@ fn a_template_is_copied_and_never_locked() {
     fs::write(dep.join("app.dlua"), b"print('edited')").unwrap();
     run(dollup().arg("--app").arg(&dep).arg("verify"));
 
-    // A second `new` will not overwrite the work.
-    let msg = fail(dollup().arg("--app").arg(&dep).args(["new", "starter"]));
+    // A second pull of the template will not overwrite the work.
+    let msg = fail(dollup().arg("--app").arg(&dep).args(["pull", "starter"]));
     assert!(msg.contains("would overwrite your work"), "{msg}");
 
-    // And the verbs do not accept each other's arguments.
-    let msg = fail(dollup().arg("--app").arg(&dep).args(["add", "starter"]));
-    assert!(msg.contains("dollup new starter"), "{msg}");
-    let msg = fail(dollup().arg("--app").arg(&dep).args(["new", "can"]));
-    assert!(msg.contains("dollup add can"), "{msg}");
+    // One verb for both: a package pulled into the same app is locked, and
+    // the one the template already brought is already there.
+    let out = run(dollup().arg("--app").arg(&dep).args(["pull", "can"]));
+    assert!(out.contains("already locked"), "{out}");
+
+    // The old spelling answers with the new one, arguments carried over.
+    let msg = fail(
+        dollup()
+            .arg("--app")
+            .arg(&dep)
+            .args(["add", "can", "--with-host"]),
+    );
+    assert!(msg.contains("pull can --with-host"), "{msg}");
 }
 
 #[test]
@@ -544,7 +562,7 @@ fn a_reserved_name_is_refused_everywhere_a_name_enters() {
     // is the reservation, not "in none of the sources".
     let app = tmp.path().join("app");
     run(dollup().arg("--app").arg(&app).arg("init"));
-    let msg = fail(dollup().arg("--app").arg(&app).args(["add", "Init"]));
+    let msg = fail(dollup().arg("--app").arg(&app).args(["pull", "Init"]));
     assert!(msg.contains("'Init' is a reserved name"), "{msg}");
     assert!(!msg.contains("none of"), "refused before any fetch: {msg}");
     let lock: serde_json::Value =

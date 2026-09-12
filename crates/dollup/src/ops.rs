@@ -85,13 +85,10 @@ pub fn open_source(entry: &SourceEntry, require_signatures: bool) -> Result<Open
     })
 }
 
-/// `dollup add`: resolve a ref and its dependencies against the source
-/// list, in order; fetch, hash-check, store, materialize, lock. Inert by
-/// construction — files on disk are the entire effect.
-pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec<String>> {
-    let mut report = vec![];
-    // The ref may pin a source; otherwise the deployment's list, in order.
-    // A pinned source that matches a configured entry borrows its keys.
+/// Which sources a ref resolves against: the one it pins, borrowing the
+/// configured entry's keys when there is one, or the deployment's list in
+/// order. Empty is a refusal that says what to add.
+fn entries_for(deployment: &Deployment, r: &Ref) -> Result<Vec<SourceEntry>> {
     let entries: Vec<SourceEntry> = match &r.source {
         Some(url) => vec![deployment
             .config
@@ -104,14 +101,45 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
     };
     if entries.is_empty() {
         bail!(
-            "nothing to install from: this app has no package sources.\n\
+            "nothing to install from: this root has no package sources.\n\
              \n  \
              add one:  {} source add <url> --key <key>",
             crate::me()
         );
     }
+    Ok(entries)
+}
 
-    let store = Store::open(&deployment.store_dir())?;
+/// `dollup pull <ref>`: a package is fetched, locked and materialized
+/// ([`add`]); a starting point — a template — is copied and never locked
+/// ([`new_from_template`]). Which it is comes from the index, so the
+/// manifest is read once, by whichever path runs.
+pub fn pull(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec<String>> {
+    let entries = entries_for(deployment, r)?;
+    let mut opened: Vec<OpenSource> = vec![];
+    let (_, _, entry) = find(
+        &entries,
+        &mut opened,
+        deployment.config.require_signatures,
+        &r.name,
+        r.version.as_ref(),
+    )?;
+    if entry.template {
+        new_from_template(deployment, r)
+    } else {
+        add(deployment, r, gates)
+    }
+}
+
+/// A package: resolve a ref and its dependencies against the source list,
+/// in order; fetch, hash-check, store, materialize, lock. Inert by
+/// construction — files on disk are the entire effect. What `pull` runs
+/// for anything that is not a starting point.
+pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec<String>> {
+    let mut report = vec![];
+    let entries = entries_for(deployment, r)?;
+
+    let store = Store::open(&deployment.store_dir()?)?;
     let mut opened: Vec<OpenSource> = vec![];
     let mut queue: VecDeque<(String, Option<semver::VersionReq>)> =
         [(r.name.clone(), r.version.clone())].into();
@@ -129,7 +157,7 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
                 continue;
             }
             bail!(
-                "{name} is locked at {} but {} is required; `dollup update` moves pins, `add` does not",
+                "{name} is locked at {} but {} is required; `dollup update` moves pins, `pull` does not",
                 locked.version,
                 req.unwrap()
             );
@@ -145,11 +173,13 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
         let source = &opened[source_idx];
         let manifest = admit(source, &name, &version, &entry)?;
         if manifest.template {
+            // Reachable only through a dependency edge: `pull` sends a
+            // requested template down the copy path before this runs.
             bail!(
-                "'{name}' is a starting point, not a dependency — installing it \
+                "'{name}' is a starting point, not a dependency — locking it \
                  would lock files you are meant to edit.\n\
                  \n  \
-                 copy it instead:  dollup new {name}"
+                 copy it instead:  dollup pull {name}"
             );
         }
 
@@ -375,7 +405,7 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<()> {
 /// Returns problems; empty is clean.
 pub fn verify(deployment: &Deployment) -> Result<Vec<String>> {
     let mut problems = vec![];
-    let store = Store::open(&deployment.store_dir())?;
+    let store = Store::open(&deployment.store_dir()?)?;
     for (name, locked) in &deployment.lock.packages {
         for (path, want) in &locked.files {
             let on_disk = deployment.code_root().join(name).join(path);
@@ -386,7 +416,9 @@ pub fn verify(deployment: &Deployment) -> Result<Vec<String>> {
             }
             match store.get(want) {
                 Ok(Some(_)) => {}
-                Ok(None) => problems.push(format!("{name}: {path} absent from the store")),
+                Ok(None) => problems.push(format!(
+                    "{name}: {path} absent from the cache (`dollup pull` refills it)"
+                )),
                 Err(e) => problems.push(format!("{name}: {path}: {e}")),
             }
         }
@@ -404,53 +436,68 @@ pub fn verify(deployment: &Deployment) -> Result<Vec<String>> {
             Err(_) => {}
         }
         if store.get(&locked.state)?.is_none() {
-            problems.push(format!("snapshot {name}: state absent from the store"));
+            problems.push(format!("snapshot {name}: state absent from the cache"));
         }
     }
     Ok(problems)
 }
 
-/// `dollup gc`: sweep the store against the lock — package files and pinned
-/// snapshot state both.
-pub fn gc(deployment: &Deployment) -> Result<usize> {
-    let keep: BTreeSet<_> = deployment
-        .lock
-        .packages
+/// Every blob a lock references: package files and pinned snapshot state.
+fn referenced(lock: &dollup_format::Lockfile) -> impl Iterator<Item = dollup_format::Hash> + '_ {
+    lock.packages
         .values()
         .flat_map(|p| p.files.values().cloned())
-        .chain(deployment.lock.snapshots.values().map(|s| s.state.clone()))
-        .collect();
-    Store::open(&deployment.store_dir())?.gc(&keep)
+        .chain(lock.snapshots.values().map(|s| s.state.clone()))
 }
 
-/// `dollup new`: a template is a starting point, so its files are copied
+/// `dollup gc`: sweep the store against what is referenced. A root's store
+/// is the cache every root on this box shares, so the sweep keeps what
+/// **every recorded root's** lock references, not only this one's; a
+/// recorded root whose lock cannot be read is skipped and said, because
+/// the blobs only it referenced are about to go — and its next `pull`
+/// refetches them, which is what a cache is for. An app sweeps its own
+/// store against its own lock, as it always did.
+///
+/// Returns what was swept and what was said.
+pub fn gc(deployment: &Deployment) -> Result<(usize, Vec<String>)> {
+    let mut keep: BTreeSet<_> = referenced(&deployment.lock).collect();
+    let mut notes = vec![];
+    if matches!(deployment.layout, crate::deployment::Layout::Root { .. }) {
+        let here = deployment.dir.canonicalize().ok();
+        for entry in crate::roots::load()?.roots {
+            if Some(&entry.path) == here.as_ref() {
+                continue;
+            }
+            let lock_path = crate::root::lock_path(&entry.path);
+            match fs::read(&lock_path)
+                .map_err(|e| e.to_string())
+                .and_then(|b| {
+                    serde_json::from_slice::<dollup_format::Lockfile>(&b).map_err(|e| e.to_string())
+                }) {
+                Ok(lock) => keep.extend(referenced(&lock)),
+                Err(e) => notes.push(format!(
+                    "skipping {}: {} could not be read ({e}); blobs only it referenced are \
+                     swept, and its next `dollup pull` refetches them",
+                    entry.path.display(),
+                    lock_path.display()
+                )),
+            }
+        }
+    }
+    let swept = Store::open(&deployment.store_dir()?)?.gc(&keep)?;
+    Ok((swept, notes))
+}
+
+/// `dollup pull` of a template: a starting point, so its files are copied
 /// into the app and never locked — you are meant to edit them, and a locked
 /// file you edit is a `verify` failure. Its dependencies are ordinary
-/// packages and are added and locked as usual.
+/// packages and are locked as usual.
 ///
 /// This is the one path by which dollup delivers config, and the doctrine
 /// holds: copying a file into a directory you own is not writing config into
 /// a running app. Compare `add`, which never places a config at all.
 pub fn new_from_template(deployment: &mut Deployment, r: &Ref) -> Result<Vec<String>> {
-    let entries: Vec<SourceEntry> = match &r.source {
-        Some(url) => vec![deployment
-            .config
-            .sources
-            .iter()
-            .find(|e| e.url() == url)
-            .cloned()
-            .unwrap_or_else(|| SourceEntry::Url(url.clone()))],
-        None => deployment.config.sources.clone(),
-    };
-    if entries.is_empty() {
-        bail!(
-            "nothing to start from: this app has no package sources.\n\
-             \n  \
-             add one:  {} source add <url> --key <key>",
-            crate::me()
-        );
-    }
-
+    let entries = entries_for(deployment, r)?;
     let mut opened: Vec<OpenSource> = vec![];
     let (idx, version, entry) = find(
         &entries,
@@ -462,10 +509,12 @@ pub fn new_from_template(deployment: &mut Deployment, r: &Ref) -> Result<Vec<Str
     let source = &opened[idx];
     let manifest = admit(source, &r.name, &version, &entry)?;
     if !manifest.template {
+        // Reachable only if the index and the manifest disagree about what
+        // this is; `pull` sends a package down the lock path before here.
         bail!(
             "'{}' is not a template — it is a package you depend on.\n\
              \n  \
-             install it:  dollup add {}",
+             lock it instead:  dollup pull {}",
             r.name,
             r.name
         );

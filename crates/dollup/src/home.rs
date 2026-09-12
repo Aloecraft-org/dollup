@@ -34,3 +34,13 @@ pub fn drt_sums_path(version: &str) -> Option<PathBuf> {
 pub fn roots_path() -> Option<PathBuf> {
     dollup_home().map(|h| h.join("roots.json"))
 }
+
+/// The content-addressed store every root on this box shares:
+/// `~/.dollup/cache/store`. `pull` fills it and materializes from it;
+/// `verify` checks against it; `gc` sweeps it against every recorded
+/// root's lock. Content-addressed, so two roots pulling one blob hold one
+/// copy, and no root can hand another a different file under the same
+/// name — the name is the hash.
+pub fn cache_store() -> Option<PathBuf> {
+    dollup_home().map(|h| h.join("cache").join("store"))
+}

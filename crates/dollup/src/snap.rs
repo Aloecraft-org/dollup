@@ -121,7 +121,7 @@ pub fn push(deployment: &mut Deployment, remote: &str, spec: PushSpec) -> Result
             remote: remote.to_string(),
         },
     );
-    Store::open(&deployment.store_dir())?.put(&blob)?;
+    Store::open(&deployment.store_dir()?)?.put(&blob)?;
     deployment.save()?;
     Ok(format!("{name} → {remote} ({})", manifest.state))
 }
@@ -157,7 +157,7 @@ pub fn pull(deployment: &mut Deployment, remote: &str, name: &str) -> Result<Vec
 
     report.extend(ensure_code_set(deployment, &manifest.code_set)?);
 
-    Store::open(&deployment.store_dir())?.put(&blob)?;
+    Store::open(&deployment.store_dir()?)?.put(&blob)?;
     let dir = deployment.dir.join("snapshots");
     write_atomic(&dir.join(format!("{name}.dvsnap")), &blob)?;
     deployment.lock.snapshots.insert(

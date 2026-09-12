@@ -90,6 +90,16 @@ Hence the publicity gate (SPEC.md §7): `dollup snapshot push` to any
 non-file remote requires explicit acknowledgment, and no repo lists
 snapshots.
 
+## The cache is shared across roots, and content-addressed
+
+Every root on a box materializes from one store, `~/.dollup/cache/store`.
+A blob's name is its hash, so one root cannot hand another a different
+file under the same name, and a root cannot depend on the cache at all: it
+is self-contained without it, and `pull` refills one. What sharing does
+change is `gc`, which keeps what every recorded root's lock references and
+sweeps the rest — a root that is not on the list, or whose lock cannot be
+read, is not protecting its blobs, and the sweep says so by name.
+
 ## Reserved names are refused, not renamed
 
 A root's layout owns six names — `drt`, `init`, `live`, `log`, `profile`,

@@ -75,7 +75,7 @@ be run against something real before you publish anything of your own:
 ```sh
 dollup init
 dollup source add "file://$PWD/std-repo"   # an absolute path: file:// takes no relative one
-dollup add hello
+dollup pull hello
 dollup get drt && ./drt run .drt_root/init/hello/guest/hello.dlua
 ```
 
@@ -92,9 +92,11 @@ rsync -avz --delete .publish/ user@host:/var/www/my-repo/
 # (`repo seal|index|sign|blobs`) when you want them one at a time.
 
 # Consumer side: a root is a directory.
-dollup init my_app                   # .drt_root/, the standard source key-pinned, a hello
-dollup add telemetry@^1              # fetch, hash-check, lock, populate .drt_root/init/
-dollup verify                        # re-hash everything against the lock
+dollup new my_app && cd my_app       # .drt_root/, the standard source key-pinned, a hello
+dollup pull telemetry@^1             # fetch through ~/.dollup/cache, hash-check, lock, populate .drt_root/init/
+dollup pull starter                  # a starting point is copied, never locked: the files are yours
+dollup verify                        # re-hash everything against the lock and the cache
+dollup gc                            # sweep the cache against every root on this box
 
 # Snapshots: migrate a sleeping agent (acceptance demo 2's transport half).
 dollup snapshot push file:///mnt/xfer night-clerk.dvsnap --package agent   # machine A
@@ -140,16 +142,19 @@ not walk up, so a subdirectory of a root is not in that root. A
 `DOLLUP_CONFIG` name one explicitly:
 
 ```sh
-dollup add telemetry                       # <root>/.drt_root/project.json, else <root>/dollup.json
-dollup -c ./somewhere.json add telemetry   # an explicit dollup.json
-DOLLUP_CONFIG=./somewhere.json dollup add telemetry
+dollup pull telemetry                       # <root>/.drt_root/project.json, else <root>/dollup.json
+dollup -c ./somewhere.json pull telemetry   # an explicit dollup.json
+DOLLUP_CONFIG=./somewhere.json dollup pull telemetry
 ```
 
 **Nothing about config is read from your home directory, nothing is looked
 up in XDG, and nothing is written on a first run.** `~/.dollup/` exists —
-keys, the cache of pulled runtimes and packages — and config resolution
-reads nothing from it; no root ever depends on it. `dollup get` needs no
-config at all — it takes a URL or a default it prints every time.
+keys, the list of roots on this box, and `cache/`, the content-addressed
+store every root shares: `pull` fills it and materializes from it, `verify`
+checks against it, `gc` sweeps it against every recorded root's lock — and
+config resolution reads nothing from it; no root ever depends on it (a root
+is self-contained without its cache, and `pull` refills one). `dollup get`
+needs no config at all — it takes a URL or a default it prints every time.
 
 Writes go back to the file the config was read from: `source add` on a root
 edits `project.json`'s `sources` and nothing else in it; `dollup -c x.json

@@ -7,8 +7,10 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+mod common;
+
 fn dollup() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_dollup"));
+    let mut cmd = common::dollup();
     // No terminal, on purpose: the flags and the refusals are the test.
     cmd.stdin(Stdio::null());
     cmd

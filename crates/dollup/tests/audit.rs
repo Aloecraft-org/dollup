@@ -7,15 +7,13 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use sha2::Digest;
 
 const ROOT_ID: &str = "0192f0c1-8000-7000-8000-00000000abcd";
 
-fn dollup() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_dollup"))
-}
+mod common;
+use common::dollup;
 
 /// Run audit on `dir`: (start would run, everything it printed).
 fn audit(dir: &Path, args: &[&str]) -> (bool, String) {
