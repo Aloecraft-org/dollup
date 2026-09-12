@@ -86,5 +86,31 @@ sleeping agent with different code than it hibernated under.
 
 A snapshot is an instance's whole heap. Secure-function scrambling is not
 inherited by snapshots; anything the instance held in memory is in the blob.
-Hence the publicity gate (SPEC.md §7): pushing a snapshot to any non-file
-remote requires explicit acknowledgment, and no repo lists snapshots.
+Hence the publicity gate (SPEC.md §7): `dollup snapshot push` to any
+non-file remote requires explicit acknowledgment, and no repo lists
+snapshots.
+
+## Reserved names are refused, not renamed
+
+A root's layout owns six names — `drt`, `init`, `live`, `log`, `profile`,
+`state` — and dollup refuses a package under any of them, in any
+capitalization, at `add`, `repo seal`, and `repo index` alike. This is a
+collision rule, not a security boundary: it exists so that no tool joining a
+package name onto a root's directory can land on the root's own files, and
+it says nothing about what a package *not* so named may do. drt refuses the
+same six on its side; the two lists are meant to be one constant and are
+two copies until they are.
+
+## Shipping a root never carries operator or runtime state
+
+Stated ahead of the code, as a commitment the verb is held to rather than a
+property discovered afterward: the root-shipping `dollup push` is not built,
+and when it is, it excludes `consent.json`, `state/`, and the directory that
+holds account-populated profiles. The exclusion is **positional** — the
+envelope builder refuses those paths outright — and never a field a profile
+carries, because a field means push parses every profile to decide what
+travels, and one forgotten field ships someone's credentials. A path list
+cannot forget. The observable trace of a `consent.json` copied around by
+hand is a `root_id` that does not match `project.json`, which is what
+`dollup audit` will flag; dollup cannot otherwise tell a pulled root from a
+local one and does not pretend to.
