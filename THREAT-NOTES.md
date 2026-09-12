@@ -98,8 +98,8 @@ capitalization, at `add`, `repo seal`, and `repo index` alike. This is a
 collision rule, not a security boundary: it exists so that no tool joining a
 package name onto a root's directory can land on the root's own files, and
 it says nothing about what a package *not* so named may do. drt refuses the
-same six on its side; the two lists are meant to be one constant and are
-two copies until they are.
+same six on its side, and both read one constant (`drt_config::project::
+RESERVED`), so the two cannot drift.
 
 ## Shipping a root never carries operator or runtime state
 

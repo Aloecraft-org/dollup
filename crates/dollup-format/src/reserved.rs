@@ -2,19 +2,20 @@
 //! chosen: a package, a profile, a node, a project. `.drt_root/` holds
 //! `init/`, `live/`, `log/`, `profile/`, `state/` and the `drt` binary, and a
 //! package called `live` is a collision waiting for the first tool that joins
-//! names onto that directory. drt refuses the same six on its side.
+//! names onto that directory.
 //!
-//! This list is meant to live in drt-config beside the other shared formats,
-//! so both sides read one constant; it is spelled here until dollup takes
-//! that dependency, and until then it must match drt's.
+//! The list is drt-config's — [`RESERVED`] is `drt_config::project::RESERVED`
+//! re-exported, so drt and dollup refuse the same six from one constant and
+//! cannot drift. What this module adds is the sentence: a refusal that names
+//! what was tried, what it collided with, and the whole list, worded once so
+//! the manifest check and the ref parser say the same thing.
 
-/// The six, lowercase. Matching is case-insensitive: `Live` collides with
-/// `live/` on a case-folding filesystem, and refusing it everywhere keeps the
-/// rule from depending on where a package happens to land.
-pub const RESERVED: [&str; 6] = ["drt", "init", "live", "log", "profile", "state"];
+pub use drt_config::project::RESERVED;
 
 /// The reserved name `name` collides with, if any — the canonical spelling,
-/// for naming in a refusal.
+/// for naming in a refusal. Case-insensitive, as drt's own check is: `Live`
+/// collides with `live/` on a case-folding filesystem, and refusing it
+/// everywhere keeps the rule from depending on where a package lands.
 pub fn reserved(name: &str) -> Option<&'static str> {
     RESERVED
         .iter()
@@ -38,9 +39,13 @@ mod tests {
 
     #[test]
     fn the_six_are_refused_in_any_capitalization_and_nothing_else_is() {
+        // The six, as this side of the boundary understands them; a change
+        // upstream shows up here as a list that no longer reads right.
+        assert_eq!(RESERVED, ["drt", "init", "live", "log", "profile", "state"]);
         for r in RESERVED {
-            assert_eq!(reserved(r), Some(r));
-            assert_eq!(reserved(&r.to_uppercase()), Some(r));
+            assert_eq!(reserved(r), Some(*r));
+            assert_eq!(reserved(&r.to_uppercase()), Some(*r));
+            assert!(drt_config::project::is_reserved(r), "drt agrees on {r}");
         }
         assert_eq!(reserved("Live"), Some("live"));
         // Names that merely contain one are fine; the collision is exact.
