@@ -209,7 +209,12 @@ dollup pull drt                 # the cache, at the version latest names
 dollup pin drt                  # deploy it here and record it
 dollup pin drt v0.4.1 --all     # every root on this box
 dollup pull drt --from file:///mnt/xfer   # air-gapped: a directory laid out like the mirror
+dollup pull drt 0.6.0rc1 --from https://github.com/Aloecraft-org/diluvium-drt/releases/download/v0.6.0rc1
 ```
+
+The last line is how a candidate the mirror does not carry arrives: GitHub's
+download directory for a tag has the mirror's layout, so `--from` takes it
+as it takes any other, sums and all.
 
 ## Duplicating a root
 
