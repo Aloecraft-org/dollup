@@ -115,7 +115,7 @@ fn migrate_a_sleeping_agent_between_machines() {
     let pulled = b.join("snapshots/night-clerk.dvsnap");
     assert_eq!(fs::read(&pulled).unwrap(), fs::read(&blob_path).unwrap());
     assert!(
-        b.join(".drt_root/init/agent/guest/agent.dlua").exists(),
+        b.join(".drt_root/init/agent.dlua").exists(),
         "same code-set on B"
     );
 

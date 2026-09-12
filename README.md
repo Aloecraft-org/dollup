@@ -76,7 +76,7 @@ be run against something real before you publish anything of your own:
 dollup init
 dollup source add "file://$PWD/std-repo"   # an absolute path: file:// takes no relative one
 dollup pull hello
-dollup get drt && ./drt run .drt_root/init/hello/guest/hello.dlua
+dollup get drt && ./drt run .drt_root/init/hello.dlua      # a module lands at its name's path
 ```
 
 ```sh
@@ -125,7 +125,11 @@ ls .drt_root/profile   # debug.config.json  preflight.config.json
 
 `project.json` is the descriptor — the ceiling (`caps`), the sources, the
 declared profiles — and it is declared, never computed, so editing a profile
-never invalidates it. `consent.json` is init accepting the ceiling it just
+never invalidates it. `init/` is the deployable tree: a pulled package's
+modules land at the paths their names resolve to (`util.enc` at
+`util/enc.dlua`), by the same rule drt's loader walks with, so
+`require("util.enc")` finds them once deployed; the rest of what a package
+ships sits under `init/<name>/`, and the manifest is not materialized. `consent.json` is init accepting the ceiling it just
 declared, which is why a locally authored root never prompts on its first
 start and does see the delta the first time its ceiling widens. `init/` is
 delivered content (what `add` populates), `dlua/` is what you edit, `live/`

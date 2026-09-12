@@ -210,6 +210,33 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
             }
         }
 
+        // Where each file lands in the code root. A module lands at the
+        // path its name resolves to — `db.claims` at `db/claims.dlua` — so
+        // the loader's walk finds it under the name the package gave it;
+        // everything else a package ships (assets, host faces) sits under
+        // `<name>/` as before. The manifest is not materialized: the lock
+        // and the cache hold what `verify`, `ls` and `gc` need, and the
+        // code root is the deployable tree and nothing else.
+        let placement = placement(&manifest, &name)?;
+        for (path, dest) in &placement {
+            if let Some(owner) = deployment.lock.packages.iter().find_map(|(other, locked)| {
+                (other != &name && locked.files.contains_key(dest)).then_some(other)
+            }) {
+                bail!(
+                    "'{name}' would place '{path}' at {dest}, which '{owner}' already provides — \
+                     one root, one file per module path"
+                );
+            }
+            let on_disk = deployment.code_root().join(dest);
+            if on_disk.exists() && !placement_owned_by(&deployment.lock, &name, dest) {
+                bail!(
+                    "'{name}' would place '{path}' at {}, which is already there and belongs \
+                     to no locked package — a committed or hand-placed file; move it or remove it",
+                    on_disk.display()
+                );
+            }
+        }
+
         // Fetch what the gates admit, hash-checking every blob against the
         // manifest and the manifest against the index.
         let mut materialize: BTreeMap<String, Vec<u8>> = BTreeMap::new();
@@ -231,37 +258,47 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
             store.put(&bytes)?;
             materialize.insert(path, bytes);
         }
-        let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
 
-        // Materialize: code_root/<name>/ — manifest plus admitted files.
+        // Materialize. The package's own subdirectory is replaced whole, as
+        // before; its module files land at their own paths.
         let pkg_dir = deployment.code_root().join(&name);
         if pkg_dir.exists() {
             fs::remove_dir_all(&pkg_dir)?;
         }
-        fs::create_dir_all(&pkg_dir)?;
-        write_file(&pkg_dir.join("manifest.json"), &manifest_bytes)?;
+        let mut locked_files: BTreeMap<String, dollup_format::Hash> = BTreeMap::new();
         for (path, bytes) in &materialize {
-            write_file(&pkg_dir.join(path), bytes)?;
+            let dest = &placement[path];
+            write_file(&deployment.code_root().join(dest), bytes)?;
+            locked_files.insert(dest.clone(), hash_bytes(bytes));
         }
-
-        let mut locked_files: BTreeMap<_, _> = materialize
-            .iter()
-            .map(|(p, b)| (p.clone(), hash_bytes(b)))
-            .collect();
-        locked_files.insert("manifest.json".into(), store.put(&manifest_bytes)?);
+        let modules: Vec<String> = manifest
+            .guest
+            .as_ref()
+            .map(|g| g.modules.keys().cloned().collect())
+            .unwrap_or_default();
+        let entry_hint = manifest
+            .guest
+            .as_ref()
+            .and_then(|g| g.main.as_ref())
+            .and_then(|main| g_dest(&manifest, main));
 
         for (dep, dep_req) in &manifest.requires.packages {
             queue.push_back((dep.clone(), Some(dep_req.clone())));
         }
 
         report.push(format!(
-            "{name} {version} ← {}{}{}",
+            "{name} {version} ← {}{}{}{}",
             source.entry.url(),
             source
                 .signed_by
                 .as_deref()
                 .map(|_| ", signed")
                 .unwrap_or(", unsigned"),
+            if modules.is_empty() {
+                String::new()
+            } else {
+                format!("; require: {}", modules.join(", "))
+            },
             if skipped.is_empty() {
                 String::new()
             } else {
@@ -276,6 +313,9 @@ pub fn add(deployment: &mut Deployment, r: &Ref, gates: HostGates) -> Result<Vec
                 )
             }
         ));
+        if let Some(entry) = entry_hint {
+            report.push(format!("  runnable: a profile's entry \"{entry}\" runs it"));
+        }
         deployment.lock.packages.insert(
             name,
             LockedPackage {
@@ -356,6 +396,56 @@ fn admit(
     Ok(manifest)
 }
 
+/// Where each file of a package lands, relative to the code root: package
+/// path → destination. A module goes to the path its name resolves to, by
+/// the loader's own rule (`drt_config::modules`); anything else goes under
+/// `<name>/`. The manifest has already passed `check`, so a name here is one
+/// the loader accepts and a module file has a module extension.
+fn placement(manifest: &Manifest, name: &str) -> Result<BTreeMap<String, String>> {
+    let mut out = BTreeMap::new();
+    if let Some(guest) = &manifest.guest {
+        for (module, path) in &guest.modules {
+            let Some(dest) = module_dest(module, path) else {
+                bail!("'{name}': module '{module}' is '{path}', which is not a module file");
+            };
+            if let Some(other) = out.insert(path.clone(), dest.clone()) {
+                bail!(
+                    "'{name}': '{path}' is named by two modules, and would land at both {other} and {dest}"
+                );
+            }
+        }
+    }
+    for path in manifest.files.keys() {
+        out.entry(path.clone())
+            .or_insert_with(|| format!("{name}/{path}"));
+    }
+    Ok(out)
+}
+
+/// `db.claims` in `guest/claims.dlua` lands at `db/claims.dlua`: the name's
+/// path, with the file's own extension — bytecode stays bytecode.
+fn module_dest(module: &str, path: &str) -> Option<String> {
+    let ext = drt_config::modules::module_extension(path)?;
+    drt_config::modules::paths_for_name(module)
+        .ok()?
+        .into_iter()
+        .find(|candidate| candidate.ends_with(&format!(".{ext}")))
+}
+
+/// Where a runnable package's entry module lands, for the hint.
+fn g_dest(manifest: &Manifest, main: &str) -> Option<String> {
+    let guest = manifest.guest.as_ref()?;
+    module_dest(main, guest.modules.get(main)?)
+}
+
+/// Is a destination one this package itself locked before? A re-pull of
+/// the same package may replace its own files and no one else's.
+fn placement_owned_by(lock: &dollup_format::Lockfile, name: &str, dest: &str) -> bool {
+    lock.packages
+        .get(name)
+        .is_some_and(|locked| locked.files.contains_key(dest))
+}
+
 /// Which files the gates admit: guest and assets always; host per gate,
 /// recording what was skipped so `add` prints it.
 fn wanted_files(
@@ -408,7 +498,7 @@ pub fn verify(deployment: &Deployment) -> Result<Vec<String>> {
     let store = Store::open(&deployment.store_dir()?)?;
     for (name, locked) in &deployment.lock.packages {
         for (path, want) in &locked.files {
-            let on_disk = deployment.code_root().join(name).join(path);
+            let on_disk = deployment.code_root().join(path);
             match fs::read(&on_disk) {
                 Ok(bytes) if &hash_bytes(&bytes) == want => {}
                 Ok(_) => problems.push(format!("{name}: {path} does not match the lock")),

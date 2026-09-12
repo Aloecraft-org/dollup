@@ -137,7 +137,7 @@ fn publish_sign_add_verify_tamper_gc() {
     assert!(out.contains("can 0.1.0"), "dependency resolved: {out}");
     assert!(out.contains("signed"), "{out}");
     assert!(out.contains("host face skipped"), "{out}");
-    assert!(dep.join(".drt_root/init/can/guest/can.dlua").exists());
+    assert!(dep.join(".drt_root/init/can.dlua").exists());
     assert!(dep.join(".drt_root/init/can/assets/logo.png").exists());
     assert!(
         !dep.join(".drt_root/init/can/host/can.wasm").exists(),
@@ -150,10 +150,10 @@ fn publish_sign_add_verify_tamper_gc() {
     run(dollup().arg("--deployment").arg(&dep).arg("verify"));
 
     // Tamper with the materialized code: verify names it.
-    fs::write(dep.join(".drt_root/init/can/guest/can.dlua"), b"evil").unwrap();
+    fs::write(dep.join(".drt_root/init/can.dlua"), b"evil").unwrap();
     let msg = fail(dollup().arg("--deployment").arg(&dep).arg("verify"));
     assert!(
-        msg.contains("can: guest/can.dlua does not match the lock"),
+        msg.contains("can: can.dlua does not match the lock"),
         "{msg}"
     );
 

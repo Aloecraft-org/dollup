@@ -121,9 +121,16 @@ fn the_cache_is_shared_and_gc_keeps_what_any_recorded_root_references() {
 
     // Both roots' blobs are in the one cache, and nothing is beside the roots.
     let before = blobs(&home);
-    assert!(before >= 4, "manifests and modules of both: {before}");
+    assert!(before >= 2, "the module of each: {before}");
     assert!(!a.join(".dollup").exists(), "no per-root store");
-    assert!(a.join(".drt_root/init/can/guest/can.dlua").exists());
+    assert!(
+        a.join(".drt_root/init/can.dlua").exists(),
+        "at its module path"
+    );
+    assert!(
+        !a.join(".drt_root/init/can").exists(),
+        "no package directory, no manifest"
+    );
 
     // A sweep from a keeps b's blobs, because b is a recorded root.
     let out = run(common::dollup()
@@ -152,10 +159,7 @@ fn the_cache_is_shared_and_gc_keeps_what_any_recorded_root_references() {
             || out.contains("/b"),
         "{out}"
     );
-    assert!(
-        out.contains("swept 2 blob(s)"),
-        "hello's manifest and module: {out}"
-    );
+    assert!(out.contains("swept 1 blob(s)"), "hello's module: {out}");
     assert!(blobs(&home) < before);
     run(common::dollup()
         .env("HOME", &home)

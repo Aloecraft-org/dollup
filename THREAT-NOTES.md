@@ -100,6 +100,17 @@ change is `gc`, which keeps what every recorded root's lock references and
 sweeps the rest — a root that is not on the list, or whose lock cannot be
 read, is not protecting its blobs, and the sweep says so by name.
 
+## A module path belongs to one package
+
+A pulled package's modules land at the paths their names resolve to, by the
+loader's rule (`drt_config::modules`, applied at `repo seal` and at `pull`
+alike). Two locked packages naming one module is refused at pull naming
+both, and a module landing on a file no locked package owns — a committed
+or hand-placed one — is refused rather than overwritten. What this does not
+claim: that a module's *content* is what its name suggests. Provenance is
+the signature's claim, as ever, and requiring a module grants nothing the
+node did not already hold.
+
 ## Reserved names are refused, not renamed
 
 A root's layout owns six names — `drt`, `init`, `live`, `log`, `profile`,

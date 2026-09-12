@@ -118,6 +118,12 @@ pub struct RootConfig {
 
 ## 4. The code root on disk
 
+> **Status (2026-09-12):** superseded by the root layout. The code root is
+> `.drt_root/init/`, and it holds a *deployable tree*, not packages: a pulled
+> package's modules land at the paths their names resolve to, per drt's
+> `doc/Modules.md` and `drt_config::modules`, and no manifest is written
+> there. The lock is what records which package each file came from.
+
 ```
 <code_root>/
   index.json                 # optional; derived by scan when absent

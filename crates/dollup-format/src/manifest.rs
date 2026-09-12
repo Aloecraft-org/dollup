@@ -383,6 +383,12 @@ pub enum ManifestError {
     ProvidesUndeclared(String),
     #[error("guest face is marked source_only but '{0}' does not end in .dlua or .lua")]
     NotSource(String),
+    #[error("module '{name}' is '{path}', which is not a module file (.dlua, .lua, or .dluac)")]
+    NotAModuleFile { name: String, path: String },
+    /// The loader's own rule, applied where the package is made: a module
+    /// no `require` could name is refused at seal, not discovered at load.
+    #[error("module '{name}' cannot be required: {why}")]
+    ModuleName { name: String, why: String },
     #[error(
         "requires.connectors states call-shape versions ({0}), and connector \
          versions are not reported by any host yet — name the connectors \
@@ -425,8 +431,29 @@ impl Manifest {
                         owner: format!("module '{module}'"),
                     });
                 }
-                if guest.source_only && !(path.ends_with(".dlua") || path.ends_with(".lua")) {
-                    return Err(ManifestError::NotSource(path.clone()));
+                // The name is what `require` will say, and the file is what
+                // answers: both checked by the loader's rule (drt-config's
+                // `modules`), so a package dollup admits is one the loader
+                // can reach every module of.
+                if let Some(why) = drt_config::modules::refuse_name(module) {
+                    return Err(ManifestError::ModuleName {
+                        name: module.clone(),
+                        why,
+                    });
+                }
+                match drt_config::modules::module_extension(path) {
+                    None => {
+                        return Err(ManifestError::NotAModuleFile {
+                            name: module.clone(),
+                            path: path.clone(),
+                        })
+                    }
+                    Some(ext)
+                        if guest.source_only && ext == drt_config::modules::BYTECODE_EXTENSION =>
+                    {
+                        return Err(ManifestError::NotSource(path.clone()));
+                    }
+                    Some(_) => {}
                 }
             }
         }
@@ -514,6 +541,38 @@ mod check_tests {
         let m: Manifest =
             serde_json::from_str(r#"{"name": "lively", "version": "0.1.0"}"#).unwrap();
         assert_eq!(m.check(), Ok(()));
+    }
+}
+
+#[cfg(test)]
+mod module_tests {
+    use super::*;
+
+    fn manifest(name: &str, path: &str) -> Manifest {
+        serde_json::from_str(&format!(
+            r#"{{"name": "lib", "version": "0.1.0",
+                 "guest": {{ "modules": {{ "{name}": "{path}" }} }},
+                 "files": {{ "{path}": "sha256:00" }} }}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_module_the_loader_could_not_name_is_refused_at_seal() {
+        // The loader's rule, applied here: the reserved component, a bad
+        // character, and a file `require` could never answer with.
+        let err = manifest("stdlib.x", "x.dlua").check().unwrap_err();
+        assert!(matches!(err, ManifestError::ModuleName { .. }), "{err}");
+        assert!(err.to_string().contains("`stdlib` is reserved"), "{err}");
+        let err = manifest("has space", "x.dlua").check().unwrap_err();
+        assert!(matches!(err, ManifestError::ModuleName { .. }), "{err}");
+        let err = manifest("cfg", "config.json").check().unwrap_err();
+        assert!(matches!(err, ManifestError::NotAModuleFile { .. }), "{err}");
+        // `.lua` is a module file, and `.dluac` is refused only while the
+        // package says source_only, which is the default.
+        assert_eq!(manifest("util.enc", "guest/enc.lua").check(), Ok(()));
+        let err = manifest("util.enc", "guest/enc.dluac").check().unwrap_err();
+        assert!(matches!(err, ManifestError::NotSource(_)), "{err}");
     }
 }
 
