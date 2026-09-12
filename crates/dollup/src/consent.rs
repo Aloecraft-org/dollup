@@ -131,8 +131,11 @@ pub fn consent(dir: &Path, flags: Flags) -> Result<Vec<String>> {
         ConsentCheck::Widened {
             objection, change, ..
         } => {
+            // The objection's inner error: `Objection` itself says "the
+            // ceiling widened", which this line already does.
             lines.push(format!(
-                "the ceiling WIDENED since it was accepted: {objection}"
+                "the ceiling widened since it was accepted: {}",
+                objection.0
             ));
             lines.extend(change.lines().into_iter().map(|l| format!("  {l}")));
             lines.push("the ceiling as it stands now:".into());

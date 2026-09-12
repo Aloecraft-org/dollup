@@ -163,7 +163,10 @@ fn consent_states_are_reported_as_start_would_act_on_them() {
     .unwrap();
     let (ok, out) = audit(dir, &[]);
     assert!(!ok);
-    assert!(out.contains("the ceiling WIDENED"), "{out}");
+    assert!(
+        out.contains("the ceiling widened since it was accepted"),
+        "{out}"
+    );
     assert!(out.contains("--accept-changes"), "{out}");
     assert!(out.contains("+ host:net/*"), "{out}");
     assert!(out.contains("- host:fs/*"), "{out}");

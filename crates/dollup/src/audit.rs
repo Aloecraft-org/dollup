@@ -362,8 +362,9 @@ fn consent_lines(report: &mut Report, check: &ConsentCheck) {
             objection, change, ..
         } => {
             report.lines.push(format!(
-                "consent: listed; the ceiling WIDENED since it was accepted — start stops to \
-                 ask, and --accept-changes is what accepts it (-y does not): {objection}"
+                "consent: listed; the ceiling widened since it was accepted — start stops to \
+                 ask, and --accept-changes is what accepts it (-y does not): {}",
+                objection.0
             ));
             report
                 .lines

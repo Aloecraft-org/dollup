@@ -97,7 +97,10 @@ fn a_widened_ceiling_takes_accept_changes_and_dash_y_is_not_enough() {
 
     let (ok, out) = consent(dir, &[]);
     assert!(!ok);
-    assert!(out.contains("the ceiling WIDENED"), "{out}");
+    assert!(
+        out.contains("the ceiling widened since it was accepted"),
+        "{out}"
+    );
     assert!(out.contains("+ host:net/*"), "{out}");
     assert!(
         out.contains("no terminal to ask on, and no --accept-changes"),
