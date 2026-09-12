@@ -34,20 +34,18 @@ lists dollup with three channels: the mirror (planned), the package repo
 (planned) and GitHub releases (live). dollup's own `site/site.json` carries
 no mirror channel yet.
 
-**dollup.aloecraft.org is deployed from the unsigned build, and the
-standard repo's tree has moved.** The page is served, says "not published
-yet", and `/std-repo/` answers 404. The tree now lives in
-`Aloecraft-org/drt-std-lib` (its own site-contract repo, staged as a
-sibling subtree at `/std-repo/` under the dollup vhost), with every package
-stating its license — which changed the index, so the signature from
-2026-09-03 no longer covers it and is not committed there. Its `site/build.sh`
-refuses to stage an unsigned tree, so nothing is served until the key
-holder runs `./publish.sh --key-file ~/.dollup/std-repo.key` and commits
-`index.json.sig` and `std-repo.pub`. Consequence, measured before the move:
-a fresh `dollup init` scaffolds this source, and until dollup `9363449` its
-first `pull` died on it whatever other sources were listed. dollup now
-passes over a source it cannot read and says so; the source stays dead
-until drt-std-lib is signed and staged.
+**dollup.aloecraft.org is deployed from the unsigned build; the standard
+repo's tree has moved and is signed.** The page is served, says "not
+published yet", and `/std-repo/` answers 404. The tree lives in
+`Aloecraft-org/drt-std-lib` (its own site-contract repo, to be staged as a
+sibling subtree at `/std-repo/` under the dollup vhost), every package
+stating its license, and since `99784b4` its `index.json.sig` and
+`std-repo.pub` are committed under the pinned key. Its `site/build.sh`
+stages a signed repo with its blob projection; nothing is served until
+lk_web deploys it. Meanwhile dollup's scaffold names the zipball peer of
+that tree under the same key, and a fresh root pulls the standard packages
+through it today, signature checked, with the dead served copy skipped and
+said.
 
 **discofetch-api is a dollup repo on GitHub, and today's dollup refuses
 it.** `packages/discofetch-api/0.1.0/manifest.json` carries
@@ -196,11 +194,14 @@ false`, `mirror: false`. What it means here:
 **Mirror and portal.**
 1. Add `Aloecraft-org/drt-std-lib` to `sites.json` as a sibling subtree at
    `/std-repo/` under the dollup vhost (its `site/site.json` says so), with
-   `site/nginx/std-repo.conf` as the path's drop-in; stage and deploy it
-   once its `index.json.sig` is committed, and redeploy dollup's own page
-   from current `main`. Then flip the package-repo channel to `live` in
-   both `site.json` files and the portal's `projects.json`. Nothing else
-   unblocks a first `dollup pull` for anyone.
+   `site/nginx/std-repo.conf` as the path's drop-in; its tree is signed
+   now, so stage and deploy it, and redeploy dollup's own page from
+   current `main`. Then flip the package-repo channel to `live` in both
+   `site.json` files and the portal's `projects.json`.
+1a. Regenerate dollup's mirror entry: v0.1.0 exists and carries
+   `changelog.json`, but `latest/` still serves v0.0.1, so an unpinned
+   `install.sh` gets the old release, and the aligned Linux name answers
+   404 there.
 2. `doc/ALIGNMENT.md` (in dollup, from the alignment session) renames
    every project's artifacts; dollup reads a release's asset under either
    spelling, chosen by its `SHA256SUMS.txt`, so the mirror can carry both

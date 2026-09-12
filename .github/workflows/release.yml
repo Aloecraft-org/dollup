@@ -224,6 +224,7 @@ jobs:
           root="$work/root"
           "$BIN" --root "$root" init smoke
           "$BIN" --root "$root" source rm https://dollup.aloecraft.org/std-repo/
+          "$BIN" --root "$root" source rm zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip
           "$BIN" --root "$root" source add "file://$repo"
           "$BIN" --root "$root" pull smoke
           "$BIN" --root "$root" verify
@@ -259,13 +260,10 @@ jobs:
           # install.sh ships as a release asset so the curl|sh front door has
           # a URL that exists with no server-side work.
           cp install.sh release_dist/install.sh
-          # A rename publishes both names for one release (doc/ALIGNMENT.md
-          # §4): the Linux binary is also published under the name every
-          # release up to v0.0.1 used, so anything fetching it by that name
-          # keeps working through this release. Drop this line in the next.
-          if [ -f release_dist/dollup_linux_x86_64_musl ]; then
-            cp release_dist/dollup_linux_x86_64_musl release_dist/dollup_linux_static_x86_64
-          fi
+          # v0.1.0 published the Linux binary under both its aligned name and
+          # the name every release before it used, for one release
+          # (doc/ALIGNMENT.md §4). From here it carries the aligned name
+          # only; install.sh still knows both for the old tags.
           # The five lines every Aloecraft release carries (doc/ALIGNMENT.md
           # §5), then this project's own compatibility facts -- the same
           # ones the changelog entry states, printed by the same tool, so

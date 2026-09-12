@@ -8,6 +8,28 @@
   ],
   "releases": [
     {
+      "version": "0.1.1",
+      "tag": "v0.1.1",
+      "date": null,
+      "status": "unreleased",
+      "stable": true,
+      "mirror": false,
+      "dollup_repo": 1,
+      "drt_config": "eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c",
+      "summary": "The standard repo's peer. drt-std-lib is signed, so `init` now pins\nit twice under one key: the served copy and GitHub's zipball of the\nsame tree, interchangeable because identity is the content hash. A\nfresh root pulls the standard packages while either copy is down.\n",
+      "upgrading": null,
+      "latest": false,
+      "sections": {
+        "added": [
+          "`init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md \u00a72). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down."
+        ],
+        "removed": [
+          "The Linux artifact's old name, `dollup_linux_static_x86_64`, is no longer published beside `dollup_linux_x86_64_musl`; v0.1.0 carried both for one release (doc/ALIGNMENT.md \u00a74)."
+        ]
+      },
+      "notes_md": "## [0.1.1] - unreleased\n\n`v0.1.1` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`\n\nThe standard repo's peer. drt-std-lib is signed, so `init` now pins\nit twice under one key: the served copy and GitHub's zipball of the\nsame tree, interchangeable because identity is the content hash. A\nfresh root pulls the standard packages while either copy is down.\n\n### Added\n\n- `init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md \u00a72). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down.\n\n### Removed\n\n- The Linux artifact's old name, `dollup_linux_static_x86_64`, is no longer published beside `dollup_linux_x86_64_musl`; v0.1.0 carried both for one release (doc/ALIGNMENT.md \u00a74).\n"
+    },
+    {
       "version": "0.1.0",
       "tag": "v0.1.0",
       "date": "2026-09-12",

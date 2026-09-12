@@ -85,6 +85,15 @@ fn init_writes_a_root_that_audit_says_would_run() {
     let root_id = project["root_id"].as_str().unwrap();
     let id = drt_config::id::Uuid7::parse(root_id).unwrap();
     assert!(id.unix_ms() > 1_700_000_000_000, "{root_id}");
+    // The peer: GitHub's zipball of the same tree, under the same key, so
+    // a root has the standard packages when either copy is down.
+    let peer = project["sources"][1]["url"].as_str().unwrap();
+    assert!(
+        peer.starts_with("zip+https://github.com/Aloecraft-org/drt-std-lib/"),
+        "{peer}"
+    );
+    assert_eq!(project["sources"][1]["keys"][0].as_str().unwrap(), key);
+    assert_eq!(project["sources"].as_array().unwrap().len(), 2);
 
     // consent.json accepts exactly the ceiling just declared, listed, so
     // the first start does not ask and the first widening does.

@@ -69,8 +69,10 @@ dollup get drt --from file:///mnt/xfer  # air-gapped: a directory, no network
 
 The standard repo lives in its own repository,
 [drt-std-lib](https://github.com/Aloecraft-org/drt-std-lib), and `init`
-pins it, so the consumer side below runs against something real before you
-publish anything of your own:
+pins it twice under one key — the served copy and GitHub's zipball of the
+same signed tree — so the consumer side below runs against something real
+before you publish anything of your own, and keeps working when either
+copy is down:
 
 ```sh
 dollup init

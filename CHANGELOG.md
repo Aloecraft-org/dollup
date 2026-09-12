@@ -12,6 +12,24 @@ than encoding it: each entry names the repo format it reads and writes and
 the drt-config revision it embeds, the same facts `BUILDINFO.txt` carries
 in the release. See `doc/ALIGNMENT.md`.
 
+## [0.1.1] - unreleased
+
+`v0.1.1` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`
+
+The standard repo's peer. drt-std-lib is signed, so `init` now pins
+it twice under one key: the served copy and GitHub's zipball of the
+same tree, interchangeable because identity is the content hash. A
+fresh root pulls the standard packages while either copy is down.
+
+### Added
+
+- `init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md §2). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down.
+
+### Removed
+
+- The Linux artifact's old name, `dollup_linux_static_x86_64`, is no longer published beside `dollup_linux_x86_64_musl`; v0.1.0 carried both for one release (doc/ALIGNMENT.md §4).
+
+
 ## [0.1.0] - 2026-09-12
 
 `v0.1.0` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`

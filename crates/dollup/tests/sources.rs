@@ -66,11 +66,15 @@ fn write_repo(home: &Path, dir: &Path, name: &str) -> String {
 /// standard source is a network source, and a test never talks to one.
 fn root(home: &Path, dir: &Path) -> PathBuf {
     run(dollup(home).arg("--root").arg(dir).args(["init", "demo"]));
-    run(dollup(home).arg("--root").arg(dir).args([
-        "source",
-        "rm",
+    for url in [
         "https://dollup.aloecraft.org/std-repo/",
-    ]));
+        "zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip",
+    ] {
+        run(dollup(home)
+            .arg("--root")
+            .arg(dir)
+            .args(["source", "rm", url]));
+    }
     dir.to_path_buf()
 }
 

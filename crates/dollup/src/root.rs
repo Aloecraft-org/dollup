@@ -45,13 +45,13 @@ pub const STD_REPO_KEY: Option<&str> = Some("ed25519:RZNTaXSePtutwF3IWX49hppum4O
 
 /// The standard repo's peer (RepoFormat.md §2): GitHub's zipball of the
 /// same tree, under the same key, so a root has the standard packages when
-/// the served copy is down and the served copy when GitHub is. Scaffolded
-/// only once `drt-std-lib`'s main carries `index.json.sig`: a keyed source
-/// whose tree has no signature is refused, not skipped, and would stop
-/// every pull. Set this to
-/// `Some("zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip")`
-/// the day it is signed.
-pub const STD_REPO_ZIP: Option<&str> = None;
+/// the served copy is down and the served copy when GitHub is. Identity is
+/// the content hash, so the two are interchangeable rather than ranked.
+/// Scaffolded since drt-std-lib's main carries `index.json.sig` (a keyed
+/// source whose tree has no signature is refused, not skipped, and would
+/// have stopped every pull before that).
+pub const STD_REPO_ZIP: Option<&str> =
+    Some("zip+https://github.com/Aloecraft-org/drt-std-lib/archive/refs/heads/main.zip");
 
 /// The profile init writes when none is named.
 pub const DEFAULT_PROFILE: &str = "debug";
