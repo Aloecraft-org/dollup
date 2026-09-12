@@ -366,6 +366,11 @@ fn default_true() -> bool {
 /// A structural check failure, quoting what a caller needs to name it.
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ManifestError {
+    #[error("{}", crate::reserved::refusal(.name, .reserved))]
+    ReservedName {
+        name: String,
+        reserved: &'static str,
+    },
     #[error("guest entry module '{0}' is not in `modules`")]
     MainNotAModule(String),
     #[error("{role} '{path}' (for {owner}) is not listed in `files`")]
@@ -398,6 +403,14 @@ impl Manifest {
     /// entry module exists, provides are declared. Cheap, offline, and run
     /// at publish and at add — failures are admission failures, by name.
     pub fn check(&self) -> Result<(), ManifestError> {
+        // First, because it is the one failure no edit to the rest of the
+        // manifest can fix: the name itself is the problem.
+        if let Some(reserved) = crate::reserved::reserved(&self.name) {
+            return Err(ManifestError::ReservedName {
+                name: self.name.clone(),
+                reserved,
+            });
+        }
         if let Some(guest) = &self.guest {
             if let Some(main) = &guest.main {
                 if !guest.modules.contains_key(main) {
@@ -471,6 +484,36 @@ impl Manifest {
             .values()
             .filter_map(|path| Some((path.clone(), self.files.get(path)?.clone())))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod check_tests {
+    use super::*;
+
+    #[test]
+    fn a_reserved_name_is_refused_before_anything_else_is_looked_at() {
+        // Nothing else about this manifest is wrong, so the name is the
+        // only thing the refusal can be about.
+        let m: Manifest = serde_json::from_str(r#"{"name": "Live", "version": "0.1.0"}"#).unwrap();
+        let err = m.check().unwrap_err();
+        assert_eq!(
+            err,
+            ManifestError::ReservedName {
+                name: "Live".into(),
+                reserved: "live",
+            }
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("'Live' is a reserved name"), "{msg}");
+        assert!(
+            msg.contains("drt, init, live, log, profile, state"),
+            "{msg}"
+        );
+
+        let m: Manifest =
+            serde_json::from_str(r#"{"name": "lively", "version": "0.1.0"}"#).unwrap();
+        assert_eq!(m.check(), Ok(()));
     }
 }
 

@@ -13,6 +13,7 @@ pub mod identity;
 pub mod index;
 pub mod lock;
 pub mod manifest;
+pub mod reserved;
 pub mod sign;
 pub mod snapshot;
 pub mod source;

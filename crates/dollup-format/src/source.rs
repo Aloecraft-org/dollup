@@ -114,6 +114,8 @@ pub enum RefError {
     BadVersionReq(String, String),
     #[error("a ref needs a package name: '{0}'")]
     Empty(String),
+    #[error("{}", crate::reserved::refusal(.0, .1))]
+    Reserved(String, &'static str),
 }
 
 impl std::str::FromStr for Ref {
@@ -139,6 +141,12 @@ impl std::str::FromStr for Ref {
         };
         if name.is_empty() {
             return Err(RefError::Empty(s.to_string()));
+        }
+        // Refused here, before any source is opened: a package that can
+        // never be admitted is not worth a fetch, and the refusal should
+        // name the reservation rather than "in none of the sources".
+        if let Some(reserved) = crate::reserved::reserved(name) {
+            return Err(RefError::Reserved(name.to_string(), reserved));
         }
         Ok(Ref {
             source,
@@ -178,6 +186,18 @@ mod tests {
             "ftp://x#y".parse::<Ref>(),
             Err(RefError::UnknownScheme(_))
         ));
+    }
+
+    #[test]
+    fn a_reserved_name_does_not_parse_however_it_is_spelled() {
+        // Bare, versioned, and pinned to a source: the name is refused in
+        // every position a ref can carry it, in any capitalization.
+        for spelled in ["Live", "state@^1", "file:///srv/repo#INIT@0.1.0"] {
+            let err = spelled.parse::<Ref>().unwrap_err();
+            assert!(matches!(err, RefError::Reserved(..)), "{spelled}: {err}");
+            assert!(err.to_string().contains("reserved name"), "{err}");
+        }
+        assert!("lively".parse::<Ref>().is_ok());
     }
 
     #[test]

@@ -503,3 +503,48 @@ fn uncheckable_requirements_are_refused_rather_than_ignored() {
     assert!(msg.contains(r#"{"min": 1, "max": 2}"#), "{msg}");
     assert!(!msg.contains("untagged"), "{msg}");
 }
+
+#[test]
+fn a_reserved_name_is_refused_everywhere_a_name_enters() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // The index scan: a package named for a root's own directory is not
+    // publishable, and the refusal names the reservation rather than
+    // anything about the tree.
+    let repo = tmp.path().join("repo");
+    write_package(
+        &repo,
+        serde_json::json!({
+            "name": "live", "version": "0.1.0",
+            "guest": { "main": "m", "modules": { "m": "m.dlua" } }
+        }),
+        &[("m.dlua", b"return {}")],
+    );
+    let msg = fail(dollup().args(["repo", "index"]).arg(&repo));
+    assert!(msg.contains("'live' is a reserved name"), "{msg}");
+
+    // Seal, on the package directory itself, in another capitalization.
+    let pkg = repo.join("packages/live/0.1.0");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(pkg.join("manifest.json")).unwrap()).unwrap();
+    manifest["name"] = "State".into();
+    fs::write(
+        pkg.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+    let msg = fail(dollup().args(["repo", "seal"]).arg(&pkg));
+    assert!(msg.contains("'State' is a reserved name"), "{msg}");
+
+    // `add`: refused before any source is consulted. The app holds only the
+    // scaffolded public source and nothing is fetched from it — the refusal
+    // is the reservation, not "in none of the sources".
+    let app = tmp.path().join("app");
+    run(dollup().arg("--app").arg(&app).arg("init"));
+    let msg = fail(dollup().arg("--app").arg(&app).args(["add", "Init"]));
+    assert!(msg.contains("'Init' is a reserved name"), "{msg}");
+    assert!(!msg.contains("none of"), "refused before any fetch: {msg}");
+    let lock: serde_json::Value =
+        serde_json::from_slice(&fs::read(app.join("dollup.lock")).unwrap()).unwrap();
+    assert!(lock["packages"].as_object().unwrap().is_empty(), "{lock}");
+}
