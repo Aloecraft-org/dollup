@@ -113,7 +113,7 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
     let dest = opts.out.join("drt");
     write_executable(&dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
 
-    println!("wrote {} ({} bytes)", dest.display(), bytes.len());
+    println!("wrote {} ({})", dest.display(), human_size(bytes.len()));
     println!("  checked: {checked}");
     // Name the invocation that works. `get` deliberately installs nothing,
     // so the binary is not on a PATH, and "it is not on your PATH" told
@@ -125,6 +125,24 @@ pub fn get_drt(opts: &GetOpts) -> Result<()> {
     };
     println!("  run it: {run_as} --version");
     Ok(())
+}
+
+/// `5.5 MiB`: a size the way a person reads one. Binary units, one decimal
+/// above bytes. The exact count is what `SHA256SUMS.txt` and `ls -l` are
+/// for; this line is for someone deciding whether the download looks right.
+fn human_size(n: usize) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut size = n as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{n} B")
+    } else {
+        format!("{size:.1} {}", UNITS[unit])
+    }
 }
 
 /// `<hex>  <name>` lines, the shape `sha256sum` prints.
@@ -186,6 +204,16 @@ ccc  BUILDINFO.txt
             Some("bbb")
         );
         assert_eq!(want_hash(sums, "drt_darwin_arm64"), None);
+    }
+
+    #[test]
+    fn sizes_read_like_a_person_would() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(1023), "1023 B");
+        assert_eq!(human_size(1024), "1.0 KiB");
+        // The number the design doc's `dollup get drt` transcript shows.
+        assert_eq!(human_size(5_789_312), "5.5 MiB");
+        assert_eq!(human_size(3 << 30), "3.0 GiB");
     }
 
     #[test]
