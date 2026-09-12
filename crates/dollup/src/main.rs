@@ -6,6 +6,7 @@ mod audit;
 mod consent;
 mod deploy;
 pub mod deployment;
+mod duplicate;
 mod fetch;
 mod home;
 mod http;
@@ -158,6 +159,15 @@ enum Verb {
         /// prompts again. The explicit opt-out, said out loud.
         #[arg(long, conflicts_with_all = ["yes", "accept_changes"])]
         all: bool,
+    },
+    /// Copy this root to a new path as a new root: a fresh root_id, minted,
+    /// with `duplicated_from` recording this one. What is runtime-owned
+    /// (state/, live/, log/) stays behind, consent.json never travels, and
+    /// the copy gets the consent this root effectively has. `cp -r` done
+    /// right: two roots claiming one id is what breaks shipping.
+    Duplicate {
+        /// Where the new root goes: a new or empty directory.
+        path: PathBuf,
     },
     /// Every root on this box: roots on disk, not deployments running.
     /// Recorded whenever a verb opens one, checked against disk when shown;
@@ -636,6 +646,11 @@ fn main() -> Result<()> {
                 },
             )?;
             for line in lines {
+                println!("{line}");
+            }
+        }
+        Verb::Duplicate { path } => {
+            for line in duplicate::duplicate(&dir, &path)? {
                 println!("{line}");
             }
         }

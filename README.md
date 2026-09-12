@@ -201,6 +201,19 @@ dollup pin drt v0.4.1 --all     # every root on this box
 dollup pull drt --from file:///mnt/xfer   # air-gapped: a directory laid out like the mirror
 ```
 
+## Duplicating a root
+
+`dollup duplicate <path>` is `cp -r` done right: the copy is a new root
+with a fresh `root_id`, minted, and `duplicated_from` recording this one —
+two roots claiming one id is what breaks shipping. Everything comes along
+except what is the runtime's (`state/`, `live/`, `log/`) and what never
+travels (`consent.json`); the copy gets the consent this root effectively
+has, a fresh listed entry over the same ceiling when this root's acceptance
+covers it, none when it does not (blanket here becomes listed there: the
+opt-out was for this root). Signers come along either way — they are who
+may approve, not an approval — so a copy on this box answers to the same
+keys. A destination inside this root is refused, however it is spelled.
+
 ## Roots on this box
 
 `dollup roots` lists every root dollup has seen on this machine — roots on

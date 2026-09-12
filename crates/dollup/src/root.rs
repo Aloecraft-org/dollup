@@ -288,13 +288,13 @@ fn std_sources() -> Result<Vec<serde_json::Value>> {
 /// `root_id`: minted, random, never derived from content. It is the hinge
 /// shipping turns on, so two roots must not be able to collide by having
 /// the same files.
-fn mint_root_id(unix_ms: u64) -> Result<Uuid7> {
+pub(crate) fn mint_root_id(unix_ms: u64) -> Result<Uuid7> {
     let mut random = [0u8; 10];
     getrandom::getrandom(&mut random).context("no entropy for a root_id")?;
     Ok(Uuid7::mint(unix_ms, random))
 }
 
-fn now() -> Result<(u64, i64)> {
+pub(crate) fn now() -> Result<(u64, i64)> {
     let since = SystemTime::now().duration_since(UNIX_EPOCH)?;
     Ok((since.as_millis() as u64, since.as_secs() as i64))
 }
