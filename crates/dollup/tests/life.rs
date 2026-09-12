@@ -548,3 +548,19 @@ fn a_reserved_name_is_refused_everywhere_a_name_enters() {
         serde_json::from_slice(&fs::read(app.join("dollup.lock")).unwrap()).unwrap();
     assert!(lock["packages"].as_object().unwrap().is_empty(), "{lock}");
 }
+
+#[test]
+fn the_published_standard_repo_verifies_under_the_shared_signer() {
+    // std-repo/index.json.sig was produced by the signer this workspace used
+    // to carry; what verifies it now is drt-config's. A signature crossing
+    // that move unchanged is the interop proof: the spelled key, the spelled
+    // signature and the index bytes mean the same thing on both sides, and
+    // drt's stricter verification accepts what dollup published.
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let out = run(dollup()
+        .args(["repo", "verify"])
+        .arg(checkout.join("std-repo"))
+        .arg("--key-file")
+        .arg(checkout.join("site/std-repo.pub")));
+    assert!(out.contains("is signed by ed25519:"), "{out}");
+}

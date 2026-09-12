@@ -21,8 +21,11 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
+# Signing is drt-config's (`drt_config::sign`, ed25519-dalek 3); the one
+# thing dollup-format still needs of its own is entropy for `repo keygen`,
+# because the shared signer takes its 32 random bytes as an argument rather
+# than choosing an RNG for its callers.
+getrandom = "0.2"
 semver = { version = "1", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
