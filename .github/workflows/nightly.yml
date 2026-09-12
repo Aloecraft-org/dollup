@@ -1,0 +1,49 @@
+name: Nightly
+
+# A dev build of main once a day (doc/ALIGNMENT.md §7): the next free
+# `vX.Y.Z-dev.N` tag, allocated from the tags that exist, built by the
+# release workflow's dev path -- one platform, always a prerelease -- and
+# skipped when HEAD has not moved since the last dev tag, so identical
+# builds do not accumulate. Dev builds stay out of the main release mirror;
+# that is the mirror's retention, configured on its side, not here.
+#
+# The tag is created by the release run (action-gh-release creates it at
+# the commit it publishes), so this workflow only decides and dispatches.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Skip unless main moved since the last dev tag
+        id: next
+        run: |
+          set -eu
+          last=$(git tag --list 'v*-dev.*' --sort=-version:refname | head -1)
+          if [ -n "$last" ] && [ "$(git rev-parse "$last^{commit}")" = "$(git rev-parse HEAD)" ]; then
+            echo "main is still at $last ($(git rev-parse --short HEAD)); nothing to build"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag=$(make -s dev-tag)
+          echo "next dev tag: $tag at $(git rev-parse --short HEAD)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Dispatch the release workflow's dev path
+        if: steps.next.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release.yml --ref main \
+            -f ref=main -f tag='${{ steps.next.outputs.tag }}' -f publish=true

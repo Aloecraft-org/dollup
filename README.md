@@ -32,21 +32,19 @@ than dollup itself.
 ## Installing
 
 ```sh
-curl -fsSL https://github.com/Aloecraft-org/dollup/releases/latest/download/install.sh | sh
+curl -fsSL https://software.aloecraft.org/releases/dollup/latest/install.sh | sh
 ```
 
-Or take the binary straight from
-[Releases](https://github.com/Aloecraft-org/dollup/releases) — every one
-carries `SHA256SUMS.txt` and a `BUILDINFO.txt` naming the commit it was built
-from. `DOLLUP_VERSION=vX.Y.Z` pins a release, `DOLLUP_PREFIX=` chooses the
-directory, and `DOLLUP_SOURCE=file:///mnt/xfer` installs with no network at
-all.
-
-From a checkout, when you want the tip rather than a release:
-
-```sh
-cargo build --release && export PATH="$PWD/target/release:$PATH"
-```
+One file, verified against the `SHA256SUMS.txt` published beside it, into
+a directory you already own. The installer asks the release mirror first
+and GitHub, the origin it mirrors, second; `DOLLUP_VERSION=vX.Y.Z` pins a
+release, `DOLLUP_PREFIX` picks the directory, and `DOLLUP_SOURCE` points
+at a directory laid out like the mirror, including a `file://` one, which
+is the air-gapped install. The assets are named as every Aloecraft release
+names them (`doc/ALIGNMENT.md`): `dollup_linux_x86_64_musl`,
+`dollup_darwin_aarch64`, `dollup_darwin_x86_64`, plus `BUILDINFO.txt`,
+`SHA256SUMS.txt` and `install.sh` itself. Or build it: `cargo build
+--release -p dollup`.
 
 ## Workspace
 
@@ -267,6 +265,26 @@ cargo build && cargo test
 
 No C toolchain, no diluvium checkout: dollup ships as a static single
 binary that needs nothing else installed.
+
+## Releasing
+
+The version and the release notes each have one source. `.technoproj`
+holds the version a human edits (`make version`, `make tag`, `make inc_pat`,
+`make set_pre kind=rc n=1`); `CHANGELOG.yaml` holds the notes, and
+`script/changelog.py generate` writes `CHANGELOG.md` and `changelog.json`
+from it, which CI keeps in step (`make changelog-check`). The release
+workflow is gated on that file: the tag must have an entry, `prerelease`
+derives from its `stable`, the release body is the entry rendered, and
+`BUILDINFO.txt` carries its compatibility facts beside the tag, version,
+commit and branch. The whole shape is `doc/ALIGNMENT.md`.
+
+To cut a release: set the entry's `status: released` and `date`, move
+`latest: true` onto it, set `mirror: true`, run `generate`, commit, then
+push the tag `make tag` prints or dispatch the Release workflow with it.
+A `vX.Y.Z-dev.N` tag needs no entry: it is a cheap build of the newest
+entry from one commit, one platform, always a prerelease; `make dev-tag`
+prints the next free one, and the nightly workflow cuts one whenever
+`main` has moved.
 
 ## Not yet built (tracked, not forgotten)
 

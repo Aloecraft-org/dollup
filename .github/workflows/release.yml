@@ -6,6 +6,12 @@ name: Release
 # platform, artifacts left on the run — and touches the Releases page only
 # when publish=true.
 #
+# The changelog is the gate and the source (doc/ALIGNMENT.md): CHANGELOG.yaml
+# must describe the tag, `prerelease` derives from its `stable`, the release
+# body is its entry rendered, and BUILDINFO.txt carries its compatibility
+# facts. A `-dev.N` tag is a cheap build of the newest entry from one
+# commit: one platform, always a prerelease, no entry of its own.
+#
 # The smoke test is the point of the whole file. Every artifact must not just
 # link but RESOLVE: it seals and indexes a one-package repo it writes itself,
 # pulls the package from it over file:// into a root, and verifies the result
@@ -49,6 +55,14 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
       publish: ${{ steps.check.outputs.publish }}
       sha: ${{ steps.check.outputs.sha }}
+      branch: ${{ steps.check.outputs.branch }}
+      # Derived from the changelog's `stable`, which is the truth; GitHub's
+      # flag is downstream of it. `version` is the entry's PEP 440 spelling
+      # and `dev` says whether this is a dev build, which decides the rigor.
+      prerelease: ${{ steps.changelog.outputs.prerelease }}
+      version: ${{ steps.changelog.outputs.version }}
+      dev: ${{ steps.changelog.outputs.dev }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,6 +93,51 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # The branch this commit is on, for BUILDINFO: a tag checkout is
+          # detached, so ask which remote branch points here.
+          BRANCH=$(git for-each-ref --points-at HEAD --format='%(refname:short)' refs/remotes/origin \
+                   | sed 's|^origin/||' | grep -v '^HEAD$' | head -1)
+          echo "branch=${BRANCH:-unknown}" >> "$GITHUB_OUTPUT"
+      # The changelog is a release gate, not a formality: CHANGELOG.yaml is
+      # what the release body and the mirror are generated from, so a tag
+      # with no entry -- or an entry still marked unreleased -- would
+      # publish an empty description and leave the mirror unable to
+      # describe what it is carrying. `--publish` makes the check strict
+      # only when something is actually going to the Releases page, so a
+      # rehearsal still runs against an `unreleased` entry. A rehearsal
+      # with no tag at all is checked against the newest entry.
+      - name: The changelog describes this tag
+        id: changelog
+        run: |
+          set -eu
+          pip install --quiet pyyaml
+          ./script/changelog.py validate
+          ./script/changelog.py check
+          ./script/changelog.py consistency
+          TAG='${{ steps.check.outputs.tag }}'
+          if [ -z "$TAG" ]; then
+            TAG=$(python3 -c "import yaml; print(yaml.safe_load(open('CHANGELOG.yaml'))['releases'][0]['tag'])")
+          fi
+          ./script/changelog.py release-check --tag "$TAG" \
+            ${{ steps.check.outputs.publish == 'true' && '--publish' || '' }} \
+            >> "$GITHUB_OUTPUT"
+      # The suffix decides the rigor (doc/ALIGNMENT.md §7): a dev build is
+      # one platform, the one that can run its own smoke test here;
+      # everything else builds every platform. Decided here so the build
+      # job's matrix is a fact of the run rather than a checkbox.
+      - id: matrix
+        run: |
+          set -eu
+          full='{"include":[
+            {"name":"linux_x86_64_musl","os":"ubuntu-latest","target":"x86_64-unknown-linux-musl","setup":"sudo apt-get update && sudo apt-get install -y musl-tools"},
+            {"name":"darwin_aarch64","os":"macos-latest","target":"aarch64-apple-darwin","setup":"true"},
+            {"name":"darwin_x86_64","os":"macos-15-intel","target":"x86_64-apple-darwin","setup":"true"}]}'
+          dev='{"include":[
+            {"name":"linux_x86_64_musl","os":"ubuntu-latest","target":"x86_64-unknown-linux-musl","setup":"sudo apt-get update && sudo apt-get install -y musl-tools"}]}'
+          if [ "${{ steps.changelog.outputs.dev }}" = true ]; then m="$dev"; else m="$full"; fi
+          # One line for GITHUB_OUTPUT, compacted as JSON rather than by
+          # stripping whitespace, which would eat the spaces inside `setup`.
+          echo "matrix=$(echo "$m" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   test:
     name: Tests
@@ -108,27 +167,14 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # Static musl: drops onto any Linux box with nothing installed,
-          # which is the whole distribution story. `ring` (under rustls)
-          # compiles C, so musl-tools is required even though dollup itself
-          # is pure Rust — that is the one build dependency here.
-          - name: linux_static_x86_64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            setup: 'sudo apt-get update && sudo apt-get install -y musl-tools'
-          - name: darwin_arm64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            setup: 'true'
-          # An Intel runner rather than a cross-build, so the smoke test
-          # below can actually RUN the artifact. Every binary in a release
-          # has been executed before it ships.
-          - name: darwin_x86_64
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-            setup: 'true'
+      # Static musl: drops onto any Linux box with nothing installed, which
+      # is the whole distribution story. `ring` (under rustls) compiles C,
+      # so musl-tools is required even though dollup itself is pure Rust.
+      # An Intel macOS runner rather than a cross-build, so the smoke test
+      # below can actually RUN the artifact: every binary in a release has
+      # been executed before it ships. Names are doc/ALIGNMENT.md §4's:
+      # <project>_<os>_<arch>[_<libc>], the profile last when there is one.
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -199,17 +245,35 @@ jobs:
       - name: BUILDINFO and checksums
         run: |
           set -eu
+          pip install --quiet pyyaml
           # install.sh ships as a release asset so the curl|sh front door has
           # a URL that exists with no server-side work.
           cp install.sh release_dist/install.sh
-          cd release_dist
+          # The five lines every Aloecraft release carries (doc/ALIGNMENT.md
+          # §5), then this project's own compatibility facts -- the same
+          # ones the changelog entry states, printed by the same tool, so
+          # the two cannot disagree.
           {
             echo "tag: ${{ needs.preflight.outputs.tag }}"
+            echo "version: ${{ needs.preflight.outputs.version }}"
             echo "commit: ${{ needs.preflight.outputs.sha }}"
+            echo "branch: ${{ needs.preflight.outputs.branch }}"
             echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > BUILDINFO.txt
-          sha256sum dollup_* BUILDINFO.txt install.sh > SHA256SUMS.txt
+            ./script/changelog.py buildinfo --tag '${{ needs.preflight.outputs.tag }}'
+          } > release_dist/BUILDINFO.txt
+          # Every other asset, BUILDINFO included; generated last so the
+          # glob does not include it (ALIGNMENT §6).
+          cd release_dist && sha256sum * > SHA256SUMS.txt
           cat BUILDINFO.txt SHA256SUMS.txt
+      # The release body is the changelog's, not GitHub's autogenerated
+      # commit list: a body derived from commit subjects says what changed
+      # in the repository rather than what changed for the person
+      # installing it.
+      - name: Release notes, from the changelog
+        run: |
+          set -eu
+          ./script/changelog.py render md --tag '${{ needs.preflight.outputs.tag }}' > release_notes.md
+          cat release_notes.md
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -217,4 +281,5 @@ jobs:
           target_commitish: ${{ needs.preflight.outputs.sha }}
           name: dollup ${{ needs.preflight.outputs.tag }}
           files: release_dist/*
-          generate_release_notes: true
+          body_path: release_notes.md
+          prerelease: ${{ needs.preflight.outputs.prerelease == 'true' }}

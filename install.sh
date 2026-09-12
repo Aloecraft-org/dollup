@@ -1,78 +1,99 @@
 #!/bin/sh
 # Install dollup.
 #
+#   curl -fsSL https://software.aloecraft.org/releases/dollup/latest/install.sh | sh
 #   curl -fsSL https://github.com/Aloecraft-org/dollup/releases/latest/download/install.sh | sh
 #
 # One file, verified against the SHA256SUMS.txt published beside it, into a
 # directory you already own. It installs nothing else and touches nothing
-# outside $DOLLUP_PREFIX.
+# outside $DOLLUP_PREFIX. The mirror is asked first and GitHub, the origin
+# it mirrors, second; a release the mirror does not carry (a candidate)
+# comes from the origin.
 #
 # Knobs: DOLLUP_VERSION=vX.Y.Z pins a release; DOLLUP_PREFIX overrides the
-# directory; DOLLUP_SOURCE points somewhere else entirely — including a
-# file:// directory, which is the air-gapped install.
+# directory; DOLLUP_MIRROR points at a different mirror; DOLLUP_SOURCE
+# points somewhere else entirely -- including a file:// directory laid out
+# like the mirror, which is the air-gapped install.
 set -eu
 
+MIRROR="${DOLLUP_MIRROR:-https://software.aloecraft.org/releases/dollup}"
 GITHUB="https://github.com/Aloecraft-org/dollup/releases"
 VERSION="${DOLLUP_VERSION:-latest}"
 
+# The aligned name (doc/ALIGNMENT.md §4: os, arch, libc where it matters)
+# and the name every release up to v0.0.1 used. Which one a release
+# carries is read off its SHA256SUMS.txt, never guessed from a version.
 case "$(uname -s)" in
-  Linux)  OS=linux_static ;;
-  Darwin) OS=darwin ;;
+  Linux)  NEW_OS=linux; OLD_OS=linux_static; LIBC=_musl ;;
+  Darwin) NEW_OS=darwin; OLD_OS=darwin; LIBC= ;;
   *) echo "install.sh: $(uname -s) has no prebuilt dollup yet; cargo build --release -p dollup" >&2; exit 1 ;;
 esac
 case "$(uname -m)" in
-  x86_64|amd64)  ARCH=x86_64 ;;
-  arm64|aarch64) ARCH=arm64 ;;
+  x86_64|amd64)  NEW_ARCH=x86_64; OLD_ARCH=x86_64 ;;
+  arm64|aarch64) NEW_ARCH=aarch64; OLD_ARCH=arm64 ;;
   *) echo "install.sh: $(uname -m) has no prebuilt dollup yet" >&2; exit 1 ;;
 esac
-# Linux ships x86_64 only today. Refuse by name rather than handing over a
-# binary that cannot exec and failing the --version check with "does not run
-# here", which is true and no help.
-if [ "$OS" = linux_static ] && [ "$ARCH" != x86_64 ]; then
-  echo "install.sh: linux $ARCH has no prebuilt dollup yet — only x86_64." >&2
-  echo "  build it: cargo build --release -p dollup" >&2
-  exit 1
-fi
-
-ASSET="dollup_${OS}_${ARCH}"
-if [ -n "${DOLLUP_SOURCE:-}" ]; then
-  BASE="${DOLLUP_SOURCE%/}"
-elif [ "$VERSION" = latest ]; then
-  BASE="$GITHUB/latest/download"
-else
-  BASE="$GITHUB/download/$VERSION"
-fi
+NEW_ASSET="dollup_${NEW_OS}_${NEW_ARCH}${LIBC}"
+OLD_ASSET="dollup_${OLD_OS}_${OLD_ARCH}"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 fetch() { curl -fsSL "$1" -o "$2" 2>/dev/null; }
+sha256_of() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f1; }
 
-fetch "$BASE/$ASSET" "$TMP/dollup" || {
-  echo "install.sh: no $ASSET at $BASE" >&2
-  echo "  the published assets are listed at $GITHUB" >&2
-  exit 1
-}
-
-# A mismatch always refuses. A missing sums file warns rather than refusing,
-# so pinning a release older than the sums-publishing workflow still works.
-if fetch "$BASE/SHA256SUMS.txt" "$TMP/sums"; then
+# Which base has this release: an explicit source, else the mirror, else
+# the origin. Decided on the sums file, which every release since the
+# sums-publishing workflow carries; a release without one is asked for the
+# asset by name instead, and installed unverified, saying so.
+BASE=""
+if [ -n "${DOLLUP_SOURCE:-}" ]; then
+  CANDIDATES="${DOLLUP_SOURCE%/}"
+elif [ "$VERSION" = latest ]; then
+  CANDIDATES="$MIRROR/latest $GITHUB/latest/download"
+else
+  CANDIDATES="$MIRROR/$VERSION $GITHUB/download/$VERSION"
+fi
+for cand in $CANDIDATES; do
+  if fetch "$cand/SHA256SUMS.txt" "$TMP/sums"; then BASE="$cand"; break; fi
+done
+if [ -z "$BASE" ]; then
+  for cand in $CANDIDATES; do
+    for asset in "$NEW_ASSET" "$OLD_ASSET"; do
+      if fetch "$cand/$asset" "$TMP/dollup"; then BASE="$cand"; ASSET="$asset"; break 2; fi
+    done
+  done
+  [ -n "$BASE" ] || {
+    echo "install.sh: no dollup for this platform at any of: $CANDIDATES" >&2
+    echo "  the published assets are listed at $GITHUB" >&2
+    exit 1
+  }
+  echo "install.sh: $BASE has no SHA256SUMS.txt; skipping verification" >&2
+  CHECKED="unverified (no SHA256SUMS.txt at the source)"
+else
+  ASSET=""
+  for asset in "$NEW_ASSET" "$OLD_ASSET"; do
+    if grep -q " $asset\$" "$TMP/sums"; then ASSET="$asset"; break; fi
+  done
+  [ -n "$ASSET" ] || {
+    echo "install.sh: $BASE/SHA256SUMS.txt lists neither $NEW_ASSET nor $OLD_ASSET" >&2
+    echo "  this platform has no prebuilt dollup in that release; cargo build --release -p dollup" >&2
+    exit 1
+  }
+  fetch "$BASE/$ASSET" "$TMP/dollup" || {
+    echo "install.sh: $BASE/SHA256SUMS.txt lists $ASSET but it is not there" >&2
+    exit 1
+  }
+  # A mismatch always refuses.
   WANT=$(grep " $ASSET\$" "$TMP/sums" | cut -d' ' -f1)
-  HAVE=$( (sha256sum "$TMP/dollup" 2>/dev/null || shasum -a 256 "$TMP/dollup") | cut -d' ' -f1)
-  if [ -z "$WANT" ]; then
-    echo "install.sh: SHA256SUMS.txt does not list $ASSET; skipping verification" >&2
-    CHECKED="unverified (asset not listed)"
-  elif [ "$WANT" != "$HAVE" ]; then
+  HAVE=$(sha256_of "$TMP/dollup")
+  if [ "$WANT" != "$HAVE" ]; then
     echo "install.sh: checksum mismatch for $ASSET" >&2
     echo "  expected $WANT" >&2
     echo "  got      $HAVE" >&2
     exit 1
-  else
-    CHECKED="sha256 ok"
   fi
-else
-  echo "install.sh: $BASE has no SHA256SUMS.txt; skipping verification" >&2
-  CHECKED="unverified (no SHA256SUMS.txt at the source)"
+  CHECKED="sha256 ok"
 fi
 
 chmod +x "$TMP/dollup"

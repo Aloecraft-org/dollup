@@ -240,14 +240,14 @@ false`, `mirror: false`. What it means here:
 **dollup (this session).** Done: source fallback (`9363449`), pin
 mismatch wording (`fdc965a`), `drt-config` at rc1 (`3b88ee2`), license as
 package metadata, `std-repo/` moved to `drt-std-lib`, releases the mirror
-does not carry taken from the origin, both artifact spellings read. Next,
-in order: scaffold the zip peer once drt-std-lib is signed (one constant,
-`root::STD_REPO_ZIP`); adopt `CHANGELOG.yaml` and drt's changelog script with a committed
-`changelog.json`, wired into release preflight; make `install.sh`
-mirror-first with a GitHub fallback and an air-gap override; stamp dollup's
-own compatibility facts into `BUILDINFO.txt` (the repo format version, the
-`drt-config` revision); add the mirror channel to `site/site.json`; cut
-v0.0.2 through all of it.
+does not carry taken from the origin, both artifact spellings read, and
+the alignment shape: `.technoproj`, `CHANGELOG.yaml`, the declaration-
+driven changelog engine, a release workflow that derives its prerelease
+flag, its body and its BUILDINFO facts from the changelog, aligned artifact
+names, a mirror-first installer, and a nightly dev build. Next: scaffold
+the zip peer once drt-std-lib is signed (one constant, `root::STD_REPO_ZIP`),
+and cut v0.0.2 through the workflow, which turns dollup's mirror entry
+`source: changelog`.
 
 ## 6. Order of work
 
