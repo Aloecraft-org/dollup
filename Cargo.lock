@@ -362,8 +362,8 @@ dependencies = [
 
 [[package]]
 name = "drt-caps"
-version = "0.5.0"
-source = "git+https://github.com/Aloecraft-org/diluvium-drt?rev=612d00685a40cec507941455a04844c09ce51a60#612d00685a40cec507941455a04844c09ce51a60"
+version = "0.6.0"
+source = "git+https://github.com/Aloecraft-org/diluvium-drt?rev=eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c#eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c"
 dependencies = [
  "rmpv",
  "serde",
@@ -372,8 +372,8 @@ dependencies = [
 
 [[package]]
 name = "drt-config"
-version = "0.5.0"
-source = "git+https://github.com/Aloecraft-org/diluvium-drt?rev=612d00685a40cec507941455a04844c09ce51a60#612d00685a40cec507941455a04844c09ce51a60"
+version = "0.6.0"
+source = "git+https://github.com/Aloecraft-org/diluvium-drt?rev=eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c#eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c"
 dependencies = [
  "base64",
  "drt-caps",
