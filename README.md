@@ -97,8 +97,8 @@ dollup add telemetry@^1              # fetch, hash-check, lock, populate code/
 dollup verify                        # re-hash everything against the lock
 
 # Snapshots: migrate a sleeping agent (acceptance demo 2's transport half).
-dollup push file:///mnt/xfer night-clerk.dvsnap --package agent   # machine A
-dollup pull file:///mnt/xfer night-clerk                          # machine B
+dollup snapshot push file:///mnt/xfer night-clerk.dvsnap --package agent   # machine A
+dollup snapshot pull file:///mnt/xfer night-clerk                          # machine B
 # → snapshots/night-clerk.dvsnap, plus the pinned code-set resolved from
 #   the sources by identity; restore is DRT's verb, against that directory.
 ```

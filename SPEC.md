@@ -279,10 +279,12 @@ place it will show, and the fields are versioned with the envelope.
 
 `dollup init` (scaffold a deployment: config with the standard sources,
 empty lockfile), `dollup add <ref>` (fetch, lock, populate — inert), `update`, `lock`,
-`ls`, `info <ref>`, `verify` (re-hash store against lock), `push <remote>
-<artifact>` (snapshot push gated per §7), `pull <remote> <ref>`, `gc`
+`ls`, `info <ref>`, `verify` (re-hash store against lock), `snapshot push
+<remote> <blob>` (gated per §7), `snapshot pull <remote> <name>`, `gc`
 (collect the store against lockfiles and pinned snapshots). Restore is a DRT
-verb; dollup only materializes.
+verb; dollup only materializes. The bare `push` and `pull` are reserved for
+shipping a whole root — a different artifact, not yet built — so snapshot
+transport lives under `snapshot` rather than borrowing the names.
 
 ## 11. Documentation stance
 
@@ -318,7 +320,8 @@ else installed).
    file pointing at the deployment); both work. The same package against a
    deployment with an insufficient ceiling fails at admission, by name.
 2. Durable-agent migration: hibernate an instance on machine A; `dollup
-   push` (flag acknowledged) to a file remote; `dollup pull` on machine B;
+   snapshot push` (flag acknowledged) to a file remote; `dollup snapshot
+   pull` on machine B;
    DRT restores against the identical code-set; the agent resumes. Same
    agent, different machine, no hand-copied files.
 

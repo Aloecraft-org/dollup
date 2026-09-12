@@ -92,6 +92,34 @@ enum Verb {
         #[arg(long, value_name = "DIR")]
         out: Option<PathBuf>,
     },
+    /// Not verbs yet — `push` and `pull` are reserved for shipping a whole
+    /// root, which is not built. Caught because they used to be the
+    /// snapshot transport: the old spelling answers with the new one
+    /// rather than "unrecognized subcommand".
+    #[command(hide = true)]
+    Push {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        rest: Vec<String>,
+    },
+    #[command(hide = true)]
+    Pull {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        rest: Vec<String>,
+    },
+    /// Snapshot transport: move a hibernated instance between machines.
+    /// Restore stays DRT's verb.
+    #[command(subcommand)]
+    Snapshot(SnapshotVerb),
+    /// Publisher-side verbs: seal, index, sign, blobs, publish, keygen.
+    #[command(subcommand)]
+    Repo(RepoVerb),
+    /// Where this app installs from.
+    #[command(subcommand)]
+    Source(SourceVerb),
+}
+
+#[derive(Subcommand)]
+enum SnapshotVerb {
     /// Push a snapshot blob to a remote. Snapshots are private by default:
     /// a non-file remote takes --export-state, said out loud.
     Push {
@@ -125,12 +153,6 @@ enum Verb {
     /// Pull a snapshot: manifest, blob, and the pinned code-set — fetched
     /// by identity from the sources if absent. Restore stays DRT's verb.
     Pull { remote: String, name: String },
-    /// Publisher-side verbs: seal, index, sign, blobs, publish, keygen.
-    #[command(subcommand)]
-    Repo(RepoVerb),
-    /// Where this app installs from.
-    #[command(subcommand)]
-    Source(SourceVerb),
 }
 
 #[derive(Subcommand)]
@@ -240,6 +262,21 @@ pub(crate) fn me() -> String {
         Some(a) if !a.is_empty() => a,
         _ => "dollup".to_string(),
     }
+}
+
+/// `dollup push` and `dollup pull` moved snapshots until the verbs were
+/// reserved for shipping a whole root. That is not built, so the only thing
+/// the old spelling can usefully do is name the new one, with the rest of
+/// the line carried over so it can be run as printed.
+fn snapshot_moved(verb: &str, rest: &[String]) -> Result<()> {
+    let me = me();
+    anyhow::bail!(
+        "`{me} {verb}` is reserved for shipping a root, which is not built yet. \
+         Snapshots moved under `snapshot`:\n  \
+         {me} snapshot {verb}{}{}",
+        if rest.is_empty() { "" } else { " " },
+        rest.join(" ")
+    )
 }
 
 fn main() -> Result<()> {
@@ -431,40 +468,44 @@ fn main() -> Result<()> {
                 out: out.unwrap_or_else(|| PathBuf::from(".")),
             })?;
         }
-        Verb::Push {
-            remote,
-            blob,
-            name,
-            package,
-            code_set,
-            identity,
-            capabilities,
-            dv_abi,
-            export_state,
-        } => {
-            let mut d = Deployment::open(&dir, cfg)?;
-            let line = snap::push(
-                &mut d,
-                &remote,
-                snap::PushSpec {
-                    blob_path: blob,
-                    name,
-                    package,
-                    code_set,
-                    identity,
-                    capabilities,
-                    dv_abi,
-                    export_state,
-                },
-            )?;
-            println!("{line}");
-        }
-        Verb::Pull { remote, name } => {
-            let mut d = Deployment::open(&dir, cfg)?;
-            for line in snap::pull(&mut d, &remote, &name)? {
+        Verb::Push { rest } => snapshot_moved("push", &rest)?,
+        Verb::Pull { rest } => snapshot_moved("pull", &rest)?,
+        Verb::Snapshot(v) => match v {
+            SnapshotVerb::Push {
+                remote,
+                blob,
+                name,
+                package,
+                code_set,
+                identity,
+                capabilities,
+                dv_abi,
+                export_state,
+            } => {
+                let mut d = Deployment::open(&dir, cfg)?;
+                let line = snap::push(
+                    &mut d,
+                    &remote,
+                    snap::PushSpec {
+                        blob_path: blob,
+                        name,
+                        package,
+                        code_set,
+                        identity,
+                        capabilities,
+                        dv_abi,
+                        export_state,
+                    },
+                )?;
                 println!("{line}");
             }
-        }
+            SnapshotVerb::Pull { remote, name } => {
+                let mut d = Deployment::open(&dir, cfg)?;
+                for line in snap::pull(&mut d, &remote, &name)? {
+                    println!("{line}");
+                }
+            }
+        },
         Verb::Source(v) => {
             let mut d = Deployment::open(&dir, cfg)?;
             match v {

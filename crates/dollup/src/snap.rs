@@ -1,6 +1,7 @@
-//! Snapshot push/pull (SPEC.md §§5, 7, 10). Push and pull move `{manifest,
-//! blob}` between a deployment and a remote; restore is DRT's verb, and
-//! dollup's last act is files on disk.
+//! `dollup snapshot push|pull` (SPEC.md §§5, 7, 10). Push and pull move
+//! `{manifest, blob}` between a deployment and a remote; restore is DRT's
+//! verb, and dollup's last act is files on disk. They sit under `snapshot`
+//! because the bare verbs are reserved for shipping a whole root.
 //!
 //! The publicity gate (§7) is checked before anything else, writability
 //! included: packages are public artifacts, snapshots are live state, and

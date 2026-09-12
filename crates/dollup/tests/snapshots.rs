@@ -81,7 +81,7 @@ fn migrate_a_sleeping_agent_between_machines() {
     let out = run(dollup()
         .arg("--deployment")
         .arg(&a)
-        .arg("push")
+        .args(["snapshot", "push"])
         .arg(format!("file://{}", remote.display()))
         .arg(&blob_path)
         .args([
@@ -104,7 +104,7 @@ fn migrate_a_sleeping_agent_between_machines() {
     let out = run(dollup()
         .arg("--deployment")
         .arg(&b)
-        .arg("pull")
+        .args(["snapshot", "pull"])
         .arg(format!("file://{}", remote.display()))
         .arg("night-clerk"));
     assert!(
@@ -168,7 +168,7 @@ fn the_publicity_gate_comes_before_writability() {
         dollup()
             .arg("--deployment")
             .arg(&dep)
-            .arg("push")
+            .args(["snapshot", "push"])
             .arg("https://example.invalid/repo")
             .arg(&blob)
             .args(["--code-set", "sha256:00"]),
@@ -181,7 +181,7 @@ fn the_publicity_gate_comes_before_writability() {
         dollup()
             .arg("--deployment")
             .arg(&dep)
-            .arg("push")
+            .args(["snapshot", "push"])
             .arg("https://example.invalid/repo")
             .arg(&blob)
             .args(["--code-set", "sha256:00", "--export-state"]),
@@ -209,13 +209,37 @@ fn the_publicity_gate_comes_before_writability() {
         dollup()
             .arg("--deployment")
             .arg(&dep)
-            .arg("pull")
+            .args(["snapshot", "pull"])
             .arg(format!("file://{}", remote.display()))
             .arg("ghost"),
     );
     assert!(
         msg.contains("sha256:feedbeef"),
         "fails naming the hash: {msg}"
+    );
+}
+
+#[test]
+fn the_old_spelling_answers_with_the_new_one() {
+    // `push`/`pull` are reserved for shipping a root now. Someone typing the
+    // README's old line gets the line that works, with their arguments
+    // carried over — not "unrecognized subcommand".
+    let msg = fail(dollup().args([
+        "push",
+        "file:///mnt/xfer",
+        "night-clerk.dvsnap",
+        "--package",
+        "agent",
+    ]));
+    assert!(
+        msg.contains("snapshot push file:///mnt/xfer night-clerk.dvsnap --package agent"),
+        "{msg}"
+    );
+    assert!(msg.contains("not built yet"), "{msg}");
+    let msg = fail(dollup().args(["pull", "file:///mnt/xfer", "night-clerk"]));
+    assert!(
+        msg.contains("snapshot pull file:///mnt/xfer night-clerk"),
+        "{msg}"
     );
 }
 
