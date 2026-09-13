@@ -14,16 +14,25 @@ in the release. See `doc/ALIGNMENT.md`.
 
 ## [0.1.1] - unreleased
 
-`v0.1.1` &middot; repo format 1 &middot; drt-config `eacfbe9b1c83`
+`v0.1.1` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`
 
-The standard repo's peer. drt-std-lib is signed, so `init` now pins
-it twice under one key: the served copy and GitHub's zipball of the
-same tree, interchangeable because identity is the content hash. A
-fresh root pulls the standard packages while either copy is down.
+The standard repo's peer, and the origin first. drt-std-lib is
+signed, so `init` now pins it twice under one key: the served copy
+and GitHub's zipball of the same tree, interchangeable because
+identity is the content hash. And drt releases are taken from
+GitHub's releases first and the release mirror second, for as long
+as the mirror lags, so `pull drt 0.6.1-rc.2` is one command with
+nothing named.
 
 ### Added
 
 - `init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md §2). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down.
+- `pull drt`, `deploy drt`, `pin drt`, `get drt` and `audit` ask GitHub's releases first and the release mirror second. A place that cannot be read is passed over and the next asked, said in the note and the report; a place whose bytes disagree with its own sums is a refusal no later place papers over. `latest` is the origin's newest stable release, then the mirror's. `--from` still replaces both and never falls back. Verified against v0.6.1-rc.2 with nothing named.
+
+### Changed
+
+- drt-config v0.6.1-rc.2 is embedded, and a pin is compared through its spelling normaliser (doc/ALIGNMENT.md §10), the comparison `drt start` makes: a root pinned `0.5.0rc9` runs a binary cut as `v0.5.0-rc.9`, with no mismatch note from `deploy` and `audit` naming one version under two spellings. Existing tags are never respelled, so a pin is still fetched under the spelling it was written in, and a spelling nothing was tagged under fails by name.
+- `install.sh` asks GitHub first and the mirror second, for the same reason, and prints which one answered.
 
 ### Removed
 

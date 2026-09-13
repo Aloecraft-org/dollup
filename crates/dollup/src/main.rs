@@ -82,7 +82,7 @@ enum Verb {
         /// what it does.
         #[arg(long)]
         with_host_native: bool,
-        /// For `pull drt`: where to fetch from, replacing the mirror.
+        /// For `pull drt`: where to fetch from, replacing the origin and the mirror.
         /// Takes `file://` too, which is the air-gapped case.
         #[arg(long, value_name = "URL")]
         from: Option<String>,

@@ -32,15 +32,16 @@ than dollup itself.
 ## Installing
 
 ```sh
-curl -fsSL https://software.aloecraft.org/releases/dollup/latest/install.sh | sh
+curl -fsSL https://github.com/Aloecraft-org/dollup/releases/latest/download/install.sh | sh
 ```
 
 One file, verified against the `SHA256SUMS.txt` published beside it, into
-a directory you already own. The installer asks the release mirror first
-and GitHub, the origin it mirrors, second; `DOLLUP_VERSION=vX.Y.Z` pins a
-release, `DOLLUP_PREFIX` picks the directory, and `DOLLUP_SOURCE` points
-at a directory laid out like the mirror, including a `file://` one, which
-is the air-gapped install. The assets are named as every Aloecraft release
+a directory you already own. The installer asks GitHub's releases first
+and the release mirror second, for as long as the mirror lags, and prints
+which one answered; `DOLLUP_VERSION=vX.Y.Z` pins a release,
+`DOLLUP_PREFIX` picks the directory, and `DOLLUP_SOURCE` points at a
+directory laid out like the mirror, including a `file://` one, which is
+the air-gapped install. The assets are named as every Aloecraft release
 names them (`doc/ALIGNMENT.md`): `dollup_linux_x86_64_musl`,
 `dollup_darwin_arm64`, `dollup_darwin_x86_64`, plus `BUILDINFO.txt`,
 `SHA256SUMS.txt` and `install.sh` itself. Or build it: `cargo build
@@ -194,8 +195,8 @@ dollup audit release    # as `drt start release` would
 drt is never installed, only deployed: a root is self-contained, so the
 binary lives at `.drt_root/drt`, copied from `~/.dollup/cache/drt/<version>/`
 and never linked to it. `pull drt` fills the cache and touches no root —
-`latest` is resolved to the version the mirror names, never cached as a
-moving target — `deploy drt` copies the cache into the root, and `pin drt`
+`latest` is resolved to the version the newest stable release names, never
+cached as a moving target — `deploy drt` copies the cache into the root, and `pin drt`
 deploys and records the version in `project.json`, so the pin and the
 binary agree; start refuses a mismatch by name. The pin is the release tag
 without its leading `v`: `0.4.1` for `v0.4.1`, and `0.5.0rc9` for the
@@ -207,15 +208,23 @@ both versions when the cache can tell what the binary is.
 
 ```sh
 dollup pull drt                 # the cache, at the version latest names
+dollup pull drt 0.6.1-rc.2      # a candidate: at the origin, on no mirror
 dollup pin drt                  # deploy it here and record it
 dollup pin drt v0.4.1 --all     # every root on this box
 dollup pull drt --from file:///mnt/xfer   # air-gapped: a directory laid out like the mirror
-dollup pull drt 0.6.0rc1 --from https://github.com/Aloecraft-org/diluvium-drt/releases/download/v0.6.0rc1
 ```
 
-The last line is how a candidate the mirror does not carry arrives: GitHub's
-download directory for a tag has the mirror's layout, so `--from` takes it
-as it takes any other, sums and all.
+Where a release comes from when nothing is named: GitHub's releases first
+— its download directory for a tag, and `latest/download/` for the newest
+stable release, each have a mirror directory's layout — and the release
+mirror second, for as long as it lags. A place that cannot be read is
+passed over and the next asked, said; a place whose bytes disagree with
+its own sums is a refusal nothing papers over. `--from` replaces both and
+never falls back, and `DOLLUP_DRT_RELEASES` and `DOLLUP_DRT_MIRROR` move
+the two bases. A pin is compared through drt-config's spelling normaliser
+(`doc/ALIGNMENT.md` §10), so a root pinned `0.5.0rc9` runs a binary cut as
+`v0.5.0-rc.9`; existing tags are never respelled, so a pin is fetched under
+the spelling it was written in.
 
 ## Duplicating a root
 

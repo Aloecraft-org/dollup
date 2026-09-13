@@ -91,10 +91,13 @@ exactly this, and nothing else, from a release directory:
 | `<base>/drt_linux_x86_64_musl` or `<base>/drt_linux_static_x86_64` (and the darwin, slim and windows names under both spellings) | the tag's directory | the asset for this platform, under `doc/ALIGNMENT.md` §4's spelling or the one every release up to 0.6.0rc1 used — whichever the sums list; never guessed from a version |
 | `<base>/SHA256SUMS.txt` | same | the asset is hash-checked before it is cached; audit identifies a deployed binary by hash against it and never executes it |
 | `<base>/BUILDINFO.txt` | same | cached beside the asset; its `tag:` line is the one fact read |
-| `<project>/latest/BUILDINFO.txt` | the mirror | `latest` resolves to the tag on that line, and is cached under the version — never as "latest" |
+| `<project>/latest/BUILDINFO.txt` | the origin's `releases/latest/download/`, then the mirror's `latest/` | `latest` resolves to the tag on that line, and is cached under the version — never as "latest" |
 
-`<base>` is `https://software.aloecraft.org/releases/diluvium-drt/<tag>/`
-by default, or whatever `--from` names. The pin in `project.json` is the
+`<base>` is GitHub's `releases/download/<tag>/` first and
+`https://software.aloecraft.org/releases/diluvium-drt/<tag>/` second by
+default — the origin leads for as long as the mirror lags it (dollup
+0.1.1); the order is one constant to flip back once the mirror is current
+— or whatever `--from` names. The pin in `project.json` is the
 tag without its leading `v` (`0.4.1`, `0.6.0rc1`), which is what drt 0.6.0
 compares its stamped release tag against, so mirror directories must stay
 keyed by tag and `BUILDINFO.txt` must keep its `tag:` line. Nothing reads
@@ -108,9 +111,10 @@ Verified today, hash-checked.
 
 **What would break dollup:** an asset name under neither spelling,
 dropping the sums or BUILDINFO from a tag directory, keying a directory by
-version instead of tag, or `latest/` losing its `BUILDINFO.txt`. A release
-the mirror does not carry is taken from GitHub's download directory for
-the tag and said so (dollup, after `9363449`); `latest` never falls back. What would improve it: if
+version instead of tag, or `latest/` losing its `BUILDINFO.txt`. The two
+places are a fallback list: one that cannot be read is passed over and the
+next asked, said, and one whose bytes disagree with its own sums is a
+refusal no later place papers over (dollup 0.1.1). What would improve it: if
 `releases.json` is meant to be the API, say so and dollup will resolve
 `latest` and `latest-prerelease` through it and stop reading `latest/`.
 

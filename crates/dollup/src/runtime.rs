@@ -11,29 +11,34 @@
 //! consults only the deployment's config, and an empty source list still
 //! resolves nothing. `get` is a different verb over a different artifact —
 //! a runtime binary is not a package, has no manifest, and never enters
-//! the store or the lockfile. It knows a default channel, it **prints the
-//! URL it is about to use every single time**, and `--from` replaces it.
-//! A default you can read is not a fallback you cannot see.
+//! the store or the lockfile. It knows two default places, asked in a fixed
+//! order, it **prints the URL it is about to use every single time**, and
+//! `--from` replaces both. A default you can read is not a fallback you
+//! cannot see.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-/// The mirror's directory for drt: one directory per tag, `latest/`, and
-/// what drt's changelog marks `mirror: true` — which excludes candidates.
+/// The origin: GitHub's releases for drt. Its download directory for a tag
+/// (`releases/download/<tag>/`) and its `releases/latest/download/` — the
+/// newest stable release, which is what the mirror's `latest/` is too — are
+/// each laid out like a mirror directory: the asset, `SHA256SUMS.txt`,
+/// `BUILDINFO.txt`. Asked first. Not a forge adapter: two URL shapes, one
+/// reader.
+pub const DRT_RELEASES: &str = "https://github.com/Aloecraft-org/diluvium-drt/releases";
+
+/// The release mirror's directory for drt: one directory per tag and a
+/// `latest/`, carrying what drt's changelog marks `mirror: true` — which
+/// excludes candidates. Asked second, for as long as the mirror lags the
+/// origin; a `file://` copy of it is the air-gapped source.
 pub const DRT_MIRROR: &str = "https://software.aloecraft.org/releases/diluvium-drt";
 
-/// The origin the mirror copies: GitHub's download directory for a tag has
-/// the mirror's layout, so a release the mirror does not carry — a
-/// candidate — is taken from here, and said. Not a forge adapter: one URL,
-/// laid out like the mirror, read the same way.
-pub const DRT_RELEASES: &str = "https://github.com/Aloecraft-org/diluvium-drt/releases/download";
-
-/// `DOLLUP_DRT_MIRROR` and `DOLLUP_DRT_RELEASES` replace the two bases, the
-/// way drt's own installer takes `DRT_MIRROR`: a `file://` directory laid
-/// out like the mirror is an air-gapped copy, and a test's stand-in. Empty
-/// means unset.
+/// `DOLLUP_DRT_RELEASES` and `DOLLUP_DRT_MIRROR` replace the two bases, the
+/// way drt's own installer takes `DRT_MIRROR`: the host moves, the layout
+/// under it does not, so a `file://` directory laid out like the mirror is
+/// an air-gapped copy, and a test's stand-in. Empty means unset.
 fn base_from(var: &str, default: &str) -> String {
     std::env::var(var)
         .ok()
@@ -50,15 +55,63 @@ pub(crate) fn releases_base() -> String {
     base_from("DOLLUP_DRT_RELEASES", DRT_RELEASES)
 }
 
-/// The mirror's directory for a version: `latest/`, or the tag's.
-pub(crate) fn channel_for(version: &str) -> String {
-    format!("{}/{version}", mirror_base())
+/// Where a release is looked for when `--from` names nothing, in the order
+/// asked: the origin, then the mirror. A fallback list, the way a root's
+/// package sources are one (THREAT-NOTES.md): a place that cannot be read
+/// is passed over and the next is asked, said; a place that refuses — its
+/// bytes are not what its own sums say — is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Place {
+    Origin,
+    Mirror,
 }
 
-/// The origin's directory for a tag: where a release the mirror does not
-/// carry is taken from.
-pub(crate) fn origin_for(tag: &str) -> String {
-    format!("{}/{tag}", releases_base())
+impl Place {
+    pub(crate) const ORDER: [Place; 2] = [Place::Origin, Place::Mirror];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Place::Origin => "the origin",
+            Place::Mirror => "the mirror",
+        }
+    }
+
+    /// The directory for a tag, or for `latest`. The origin spells the two
+    /// differently; the mirror keys both the same way.
+    pub(crate) fn dir(self, version: &str) -> String {
+        match (self, version) {
+            (Place::Origin, "latest") => format!("{}/latest/download", releases_base()),
+            (Place::Origin, tag) => format!("{}/download/{tag}", releases_base()),
+            (Place::Mirror, name) => format!("{}/{name}", mirror_base()),
+        }
+    }
+}
+
+/// A directory to read a release from, and what to call it in a report:
+/// one of the places, or the `--from` the operator named.
+#[derive(Debug, Clone)]
+pub(crate) struct Source {
+    pub name: &'static str,
+    pub base: String,
+}
+
+/// The directories a version is looked for in, in order: `--from` alone
+/// when given — the operator's word, never fallen back from — else each
+/// place's directory for the tag, or for `latest`.
+pub(crate) fn sources_for(version: &str, from: Option<&str>) -> Vec<Source> {
+    match from {
+        Some(url) => vec![Source {
+            name: "--from",
+            base: url.trim_end_matches('/').to_string(),
+        }],
+        None => Place::ORDER
+            .iter()
+            .map(|place| Source {
+                name: place.name(),
+                base: place.dir(version),
+            })
+            .collect(),
+    }
 }
 
 /// The asset names a drt release may carry for this platform, newest
@@ -123,38 +176,54 @@ impl Release {
     }
 }
 
-/// Which release `version` names, and where its files are: `--from`
-/// verbatim, else the mirror's directory for the tag.
+/// Which release `version` names, and where its files are looked for:
+/// `--from` verbatim, else the origin's directory for the tag and then the
+/// mirror's.
 ///
 /// `latest` is resolved to a concrete tag first, through the `tag:` line
-/// of the BUILDINFO.txt served beside it, because a cache entry or a pin
-/// called "latest" would be a moving target — nothing mutable is ever a
-/// pin. A source that cannot say which version `latest` is refuses by name
-/// rather than caching under a name that will mean something else tomorrow.
-pub fn resolve(version: &str, from: Option<&str>) -> Result<(Release, String)> {
-    let base_for = |tag: &str| match from {
-        Some(url) => url.trim_end_matches('/').to_string(),
-        None => channel_for(tag),
-    };
+/// of the BUILDINFO.txt served beside it — the origin's newest stable
+/// release, or the mirror's when the origin does not answer — because a
+/// cache entry or a pin called "latest" would be a moving target: nothing
+/// mutable is ever a pin. When no place can say which version `latest` is,
+/// the refusal names each and asks for a version, rather than caching under
+/// a name that will mean something else tomorrow.
+pub fn resolve(version: &str, from: Option<&str>) -> Result<(Release, Vec<Source>)> {
     if version != "latest" {
         let release = Release::named(version);
-        let base = base_for(&release.tag);
-        return Ok((release, base));
+        let sources = sources_for(&release.tag, from);
+        return Ok((release, sources));
     }
-    let base = base_for("latest");
-    let info = read_url(&format!("{base}/BUILDINFO.txt")).with_context(|| {
-        format!("{base} has no BUILDINFO.txt to say which version `latest` is; name one")
-    })?;
-    let tag = buildinfo_tag(&String::from_utf8_lossy(&info))
-        .with_context(|| format!("{base}/BUILDINFO.txt names no tag; name a version"))?;
-    let release = Release::named(&tag);
-    // With --from, the directory given is the release. Without it, the
-    // tag's own directory — stable where `latest/` moves under it.
-    let base = match from {
-        Some(_) => base,
-        None => channel_for(&release.tag),
-    };
-    Ok((release, base))
+    let mut refused = vec![];
+    for source in sources_for("latest", from) {
+        let url = format!("{}/BUILDINFO.txt", source.base);
+        let info = match read_url(&url) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                refused.push(format!(
+                    "{} has no BUILDINFO.txt at {url} ({e:#})",
+                    source.name
+                ));
+                continue;
+            }
+        };
+        let Some(tag) = buildinfo_tag(&String::from_utf8_lossy(&info)) else {
+            refused.push(format!("{url} names no tag"));
+            continue;
+        };
+        let release = Release::named(&tag);
+        // With --from, the directory given is the release. Without it, the
+        // tag's own directory at each place — stable where `latest` moves
+        // under it.
+        let sources = match from {
+            Some(_) => vec![source],
+            None => sources_for(&release.tag, None),
+        };
+        return Ok((release, sources));
+    }
+    bail!(
+        "nothing says which version `latest` is; name one:\n  {}",
+        refused.join("\n  ")
+    )
 }
 
 /// The `tag: v0.4.1` line of a BUILDINFO.txt.
@@ -164,6 +233,22 @@ fn buildinfo_tag(text: &str) -> Option<String> {
         .map(|tag| tag.trim().to_string())
         .filter(|tag| !tag.is_empty())
 }
+
+/// The one refusal a later source must not paper over: the bytes at a
+/// source are not what its own sums say. A place that cannot be read is
+/// passed over; one whose contents disagree with themselves is reported,
+/// because "try somewhere else" is the wrong answer to "someone changed
+/// something".
+#[derive(Debug)]
+pub(crate) struct Mismatch(String);
+
+impl std::fmt::Display for Mismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Mismatch {}
 
 /// One fetched asset, checked against the sums beside it where they exist.
 pub struct Fetched {
@@ -233,9 +318,10 @@ pub fn fetch(base: &str, slim: bool) -> Result<Fetched> {
                     .unwrap_or(&have.0)
                     .to_string();
                 if want != have {
-                    bail!(
+                    return Err(Mismatch(format!(
                         "checksum mismatch for {asset}\n  expected {want}\n  got      {have}\n  from     {base}"
-                    );
+                    ))
+                    .into());
                 }
                 "sha256 ok".to_string()
             }
@@ -262,8 +348,8 @@ pub struct GetOpts {
 
 /// `dollup get drt`: one file, dropped where you are.
 pub fn get_drt(opts: &GetOpts) -> Result<()> {
-    let (release, base) = resolve(&opts.version, opts.from.as_deref())?;
-    let fetched = fetch(&base, opts.slim)?;
+    let (release, sources) = resolve(&opts.version, opts.from.as_deref())?;
+    let (fetched, _) = fetch_release(&release, &sources, opts.slim)?;
     let dest = opts.out.join("drt");
     write_executable(&dest, &fetched.bytes)
         .with_context(|| format!("writing {}", dest.display()))?;
@@ -299,7 +385,7 @@ pub struct Cached {
 
 /// `dollup pull drt [version]`: fill the cache and touch no root.
 pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached> {
-    let (release, base) = resolve(version, from)?;
+    let (release, sources) = resolve(version, from)?;
     let dir = crate::home::drt_cache_dir(&release.version).ok_or_else(|| {
         anyhow::anyhow!("dollup keeps its cache in ~/.dollup/cache, and HOME is not set")
     })?;
@@ -316,7 +402,7 @@ pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached>
             });
         }
     }
-    let (fetched, fallback) = fetch_release(&release, &base, from.is_some(), slim)?;
+    let (fetched, used) = fetch_release(&release, &sources, slim)?;
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     let asset = dir.join(&fetched.asset);
     write_executable(&asset, &fetched.bytes)
@@ -337,9 +423,13 @@ pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached>
         ),
         format!("  checked: {}", fetched.checked),
     ];
-    if let Some(origin) = fallback {
+    if used > 0 {
+        let passed: Vec<&str> = sources[..used].iter().map(|s| s.name).collect();
         lines.push(format!(
-            "  from: {origin} — the mirror does not carry {}",
+            "  from: {} ({}); {} did not answer for {}",
+            sources[used].base,
+            sources[used].name,
+            passed.join(" and "),
             release.tag
         ));
     }
@@ -350,36 +440,37 @@ pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached>
     })
 }
 
-/// Fetch a release from `base`, and when `base` is the mirror's directory
-/// for the tag and does not answer, from the origin's directory for the
-/// same tag — said, and returned, so the report can name where the bytes
-/// came from. An explicit `--from` is the operator's word and never falls
-/// back. The origin's directory is checked exactly as the mirror's is: the
-/// sums beside the asset, mismatch refused.
-fn fetch_release(
-    release: &Release,
-    base: &str,
-    explicit: bool,
-    slim: bool,
-) -> Result<(Fetched, Option<String>)> {
-    match fetch(base, slim) {
-        Ok(fetched) => Ok((fetched, None)),
-        Err(e) if !explicit => {
-            let origin = origin_for(&release.tag);
-            eprintln!(
-                "note: the mirror does not carry {} ({e:#}); taking it from {origin}",
-                release.tag
-            );
-            let fetched = fetch(&origin, slim).with_context(|| {
-                format!(
-                    "{} is at neither the mirror ({base}) nor the origin ({origin})",
-                    release.tag
-                )
-            })?;
-            Ok((fetched, Some(origin)))
+/// Fetch a release from the first source that carries it, and say when that
+/// was not the first asked; which source it was is returned, so the report
+/// can name where the bytes came from. Every source is checked the same
+/// way — the sums beside the asset — and a mismatch at any of them ends the
+/// search rather than moving it along. A single source, which is what
+/// `--from` names, fails with its own error and nothing is asked after it.
+fn fetch_release(release: &Release, sources: &[Source], slim: bool) -> Result<(Fetched, usize)> {
+    let mut refused = vec![];
+    for (i, source) in sources.iter().enumerate() {
+        match fetch(&source.base, slim) {
+            Ok(fetched) => return Ok((fetched, i)),
+            Err(e) if e.downcast_ref::<Mismatch>().is_some() => return Err(e),
+            Err(e) if sources.len() == 1 => return Err(e),
+            Err(e) => {
+                if let Some(next) = sources.get(i + 1) {
+                    eprintln!(
+                        "note: {} did not answer for {} ({e:#}); asking {}",
+                        source.name, release.tag, next.name
+                    );
+                }
+                refused.push(format!("{} ({}): {e:#}", source.name, source.base));
+            }
         }
-        Err(e) => Err(e),
     }
+    let names: Vec<&str> = sources.iter().map(|s| s.name).collect();
+    bail!(
+        "{} is at neither {}:\n  {}",
+        release.tag,
+        names.join(" nor "),
+        refused.join("\n  ")
+    )
 }
 
 /// The cached asset for a release, pulling it if it is not there. A named
@@ -452,12 +543,26 @@ pub(crate) fn identify(hex: &str) -> Option<(String, PathBuf)> {
 /// The asset in a sums file whose hash is `hex`, if any: the question
 /// `audit` asks of a binary it will not execute. Any asset counts — a match
 /// says "this is a build of that release", which is what a pin is about;
-/// which platform it is for is a different question.
+/// which platform it is for is a different question. A release that ships
+/// one binary under two names (`doc/ALIGNMENT.md` §4, for one release)
+/// lists the hash twice, and the name said is this platform's own, newest
+/// spelling first, so the answer reads as what was fetched.
 pub(crate) fn asset_with_hash(sums: &str, hex: &str) -> Option<String> {
-    sums.lines().find_map(|line| {
-        let (hash, name) = line.split_once("  ")?;
-        (hash.trim() == hex).then(|| name.trim().to_string())
-    })
+    let named: Vec<String> = sums
+        .lines()
+        .filter_map(|line| {
+            let (hash, name) = line.split_once("  ")?;
+            (hash.trim() == hex).then(|| name.trim().to_string())
+        })
+        .collect();
+    let ours: Vec<String> = [false, true]
+        .into_iter()
+        .filter_map(|slim| asset_names(slim).ok())
+        .flatten()
+        .collect();
+    ours.into_iter()
+        .find(|name| named.contains(name))
+        .or_else(|| named.into_iter().next())
 }
 
 /// `<hex>  <name>` lines, the shape `sha256sum` prints.
@@ -525,6 +630,25 @@ ccc  BUILDINFO.txt
             Some("drt_slim_linux_static_x86_64")
         );
         assert_eq!(asset_with_hash(sums, "bb"), None, "no prefix match");
+        // One binary under both spellings, as a release carries for one
+        // cycle: the name said is this platform's newest.
+        let both = "\
+aaa  drt_linux_static_x86_64
+aaa  drt_linux_x86_64_musl
+bbb  drt_darwin_arm64
+";
+        if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            assert_eq!(
+                asset_with_hash(both, "aaa").as_deref(),
+                Some("drt_linux_x86_64_musl")
+            );
+        }
+        // A hash this platform has no name for is still a build of the
+        // release, under whatever name the sums give it.
+        assert_eq!(
+            asset_with_hash(both, "bbb").as_deref(),
+            Some("drt_darwin_arm64")
+        );
     }
 
     #[test]
@@ -554,16 +678,30 @@ ccc  BUILDINFO.txt
 
     #[test]
     fn a_pinned_version_and_latest_differ() {
-        assert_eq!(channel_for("latest"), format!("{DRT_MIRROR}/latest"));
-        let pinned = channel_for("v0.3.0");
+        assert_eq!(Place::Mirror.dir("latest"), format!("{DRT_MIRROR}/latest"));
+        let pinned = Place::Mirror.dir("v0.3.0");
         assert_eq!(pinned, format!("{DRT_MIRROR}/v0.3.0"));
-        assert_ne!(pinned, channel_for("latest"));
-        // Wherever it moves to, it is the Aloecraft mirror over TLS: the
-        // default download of a runtime binary is not a host to drift on.
+        assert_ne!(pinned, Place::Mirror.dir("latest"));
+        // The origin's two shapes: GitHub's download directory for a tag,
+        // and its `latest/download/`, which is the newest stable release.
+        assert_eq!(
+            Place::Origin.dir("v0.6.1-rc.2"),
+            format!("{DRT_RELEASES}/download/v0.6.1-rc.2")
+        );
+        assert_eq!(
+            Place::Origin.dir("latest"),
+            format!("{DRT_RELEASES}/latest/download")
+        );
+        // Wherever they move to, both are over TLS: the default download of
+        // a runtime binary is not a host to drift on.
         assert!(DRT_MIRROR.starts_with("https://") && DRT_MIRROR.contains("aloecraft.org/"));
-        // The origin is GitHub's download directory for a tag, which has
-        // the mirror's layout; the fallback reads it as it reads the mirror.
-        assert_eq!(origin_for("v0.6.0rc1"), format!("{DRT_RELEASES}/v0.6.0rc1"));
+        assert!(DRT_RELEASES.starts_with("https://github.com/Aloecraft-org/"));
+        // The origin is asked first, and `--from` replaces both.
+        let places: Vec<&str> = sources_for("v0.3.0", None).iter().map(|s| s.name).collect();
+        assert_eq!(places, ["the origin", "the mirror"]);
+        let from = sources_for("v0.3.0", Some("file:///mnt/xfer/"));
+        assert_eq!(from.len(), 1);
+        assert_eq!(from[0].base, "file:///mnt/xfer");
     }
 
     #[test]

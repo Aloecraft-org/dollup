@@ -1,14 +1,14 @@
 #!/bin/sh
 # Install dollup.
 #
-#   curl -fsSL https://software.aloecraft.org/releases/dollup/latest/install.sh | sh
 #   curl -fsSL https://github.com/Aloecraft-org/dollup/releases/latest/download/install.sh | sh
+#   curl -fsSL https://software.aloecraft.org/releases/dollup/latest/install.sh | sh
 #
 # One file, verified against the SHA256SUMS.txt published beside it, into a
 # directory you already own. It installs nothing else and touches nothing
-# outside $DOLLUP_PREFIX. The mirror is asked first and GitHub, the origin
-# it mirrors, second; a release the mirror does not carry (a candidate)
-# comes from the origin.
+# outside $DOLLUP_PREFIX. GitHub, the origin, is asked first and the release
+# mirror second, for as long as the mirror lags; which one answered is
+# printed.
 #
 # Knobs: DOLLUP_VERSION=vX.Y.Z pins a release; DOLLUP_PREFIX overrides the
 # directory; DOLLUP_MIRROR points at a different mirror; DOLLUP_SOURCE
@@ -43,17 +43,17 @@ trap 'rm -rf "$TMP"' EXIT
 fetch() { curl -fsSL "$1" -o "$2" 2>/dev/null; }
 sha256_of() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f1; }
 
-# Which base has this release: an explicit source, else the mirror, else
-# the origin. Decided on the sums file, which every release since the
+# Which base has this release: an explicit source, else the origin, else
+# the mirror. Decided on the sums file, which every release since the
 # sums-publishing workflow carries; a release without one is asked for the
 # asset by name instead, and installed unverified, saying so.
 BASE=""
 if [ -n "${DOLLUP_SOURCE:-}" ]; then
   CANDIDATES="${DOLLUP_SOURCE%/}"
 elif [ "$VERSION" = latest ]; then
-  CANDIDATES="$MIRROR/latest $GITHUB/latest/download"
+  CANDIDATES="$GITHUB/latest/download $MIRROR/latest"
 else
-  CANDIDATES="$MIRROR/$VERSION $GITHUB/download/$VERSION"
+  CANDIDATES="$GITHUB/download/$VERSION $MIRROR/$VERSION"
 fi
 for cand in $CANDIDATES; do
   if fetch "$cand/SHA256SUMS.txt" "$TMP/sums"; then BASE="$cand"; break; fi

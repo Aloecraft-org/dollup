@@ -2,9 +2,10 @@
 //! touches no root, `deploy drt` copies from the cache into `.drt_root/drt`
 //! (never a link), `pin drt` deploys and records, and `audit` then says
 //! the pin and the binary agree — by hash, never by running it. Against a
-//! fake mirror on disk (`--from file://`), so nothing here reaches the
-//! network, and every platform's asset name is present so the test does
-//! not care which one this box wants.
+//! fake mirror and a fake origin on disk (`--from file://`, or the two
+//! bases moved by environment), so nothing here reaches the network, and
+//! every platform's asset name is present so the test does not care which
+//! one this box wants.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -67,20 +68,37 @@ fn write_mirror(mirror: &Path, tag: &str, body: &[u8]) -> PathBuf {
 }
 
 fn write_mirror_with(mirror: &Path, tag: &str, body: &[u8], assets: &[&str]) -> PathBuf {
+    for dir in [mirror.join(tag), mirror.join("latest")] {
+        write_release(&dir, tag, body, assets);
+    }
+    mirror.to_path_buf()
+}
+
+/// A release directory as GitHub's releases lay one out: `download/<tag>/`
+/// and, for the newest stable release, `latest/download/` -- the origin's
+/// two shapes, with a mirror directory's contents in each.
+fn write_origin(origin: &Path, tag: &str, body: &[u8], latest: bool) -> PathBuf {
+    write_release(&origin.join("download").join(tag), tag, body, &ASSETS);
+    if latest {
+        write_release(&origin.join("latest").join("download"), tag, body, &ASSETS);
+    }
+    origin.to_path_buf()
+}
+
+/// One release directory: the assets, the sums beside them, the BUILDINFO
+/// whose `tag:` line says which release this is.
+fn write_release(dir: &Path, tag: &str, body: &[u8], assets: &[&str]) {
     let sums: String = assets
         .iter()
         .map(|a| format!("{}  {a}\n", hex::encode(sha2::Sha256::digest(body))))
         .collect();
     let info = format!("tag: {tag}\ncommit: 0000\ndv_abi: 1\n");
-    for dir in [mirror.join(tag), mirror.join("latest")] {
-        fs::create_dir_all(&dir).unwrap();
-        for asset in assets {
-            fs::write(dir.join(asset), body).unwrap();
-        }
-        fs::write(dir.join("SHA256SUMS.txt"), &sums).unwrap();
-        fs::write(dir.join("BUILDINFO.txt"), &info).unwrap();
+    fs::create_dir_all(dir).unwrap();
+    for asset in assets {
+        fs::write(dir.join(asset), body).unwrap();
     }
-    mirror.to_path_buf()
+    fs::write(dir.join("SHA256SUMS.txt"), &sums).unwrap();
+    fs::write(dir.join("BUILDINFO.txt"), &info).unwrap();
 }
 
 fn dollup(home: &Path) -> Command {
@@ -316,91 +334,152 @@ fn a_candidate_is_its_own_release_and_a_pin_to_the_release_refuses_it() {
     assert!(!out.contains("not verified"), "{out}");
 }
 
-/// A candidate is `mirror: false` in drt's changelog, so the mirror does
-/// not carry it; the origin's download directory has the mirror's layout,
-/// so dollup takes it from there, says so, and checks it the same way.
-/// `latest` and an explicit `--from` never fall back.
+/// Where a release comes from when nothing is named: the origin -- GitHub's
+/// releases, whose download directory for a tag and `latest/download/` have
+/// a mirror directory's layout -- and then the mirror, for as long as it
+/// lags. A place that cannot be read is passed over and the next asked,
+/// said; a place whose bytes disagree with its own sums is a refusal that no
+/// later place papers over. An explicit `--from` never falls back.
 #[test]
-fn a_release_the_mirror_does_not_carry_is_taken_from_the_origin_and_said() {
+fn the_origin_is_asked_first_the_mirror_second_and_a_mismatch_stops_the_search() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("home");
-    let mirror = write_mirror(
-        &tmp.path().join("mirror"),
+    // The origin: the newest stable release, which `latest` names, and a
+    // candidate, which no mirror carries.
+    let origin = write_origin(
+        &tmp.path().join("origin"),
         "v9.9.9",
         b"#!/bin/sh\necho nine\n",
+        true,
     );
-    let origin = write_mirror(
-        &tmp.path().join("origin"),
-        "v9.9.10rc1",
-        b"#!/bin/sh\necho candidate\n",
+    write_origin(&origin, "v9.9.10rc1", b"#!/bin/sh\necho candidate\n", false);
+    // The mirror: lagging, and holding a release the origin no longer has.
+    let mirror = write_mirror(
+        &tmp.path().join("mirror"),
+        "v9.9.8",
+        b"#!/bin/sh\necho eight\n",
     );
     let env = |cmd: &mut Command| {
-        cmd.env("DOLLUP_DRT_MIRROR", format!("file://{}", mirror.display()))
-            .env(
-                "DOLLUP_DRT_RELEASES",
-                format!("file://{}", origin.display()),
-            );
+        cmd.env(
+            "DOLLUP_DRT_RELEASES",
+            format!("file://{}", origin.display()),
+        )
+        .env("DOLLUP_DRT_MIRROR", format!("file://{}", mirror.display()));
     };
 
-    // On the mirror: taken from it, nothing said.
-    let mut cmd = dollup(&home);
-    env(&mut cmd);
-    let out = run(cmd.args(["pull", "drt", "9.9.9"]));
-    assert!(out.contains("cached drt 9.9.9"), "{out}");
-    assert!(!out.contains("does not carry"), "{out}");
-
-    // Not on the mirror: taken from the origin, and said, in the report
-    // and in the note.
+    // At the origin: taken from it, nothing said. A candidate too, with
+    // nothing named -- the mirror is never asked.
     let mut cmd = dollup(&home);
     env(&mut cmd);
     let out = run(cmd.args(["pull", "drt", "9.9.10rc1"]));
-    assert!(
-        out.contains("the mirror does not carry v9.9.10rc1"),
-        "{out}"
-    );
-    assert!(
-        out.contains(&format!("from: file://{}/v9.9.10rc1", origin.display())),
-        "{out}"
-    );
     assert!(out.contains("cached drt 9.9.10rc1"), "{out}");
+    assert!(
+        out.contains(&format!(
+            "fetching file://{}/download/v9.9.10rc1/",
+            origin.display()
+        )),
+        "{out}"
+    );
+    assert!(!out.contains("did not answer"), "{out}");
+    assert!(out.contains("checked: sha256 ok"), "{out}");
+
+    // `latest` is the origin's newest stable release, not the mirror's.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd.args(["pull", "drt"]));
+    assert!(out.contains("cached drt 9.9.9"), "{out}");
+    assert!(!home.join(".dollup/cache/drt/9.9.8").exists());
+
+    // Not at the origin: taken from the mirror, and said, in the note and
+    // in the report.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd.args(["pull", "drt", "9.9.8"]));
+    assert!(
+        out.contains("note: the origin did not answer for v9.9.8"),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "from: file://{}/v9.9.8 (the mirror); the origin did not answer for v9.9.8",
+            mirror.display()
+        )),
+        "{out}"
+    );
+    assert!(out.contains("cached drt 9.9.8"), "{out}");
     assert!(out.contains("checked: sha256 ok"), "{out}");
     assert!(home
-        .join(".dollup/cache/drt/9.9.10rc1/SHA256SUMS.txt")
+        .join(".dollup/cache/drt/9.9.8/SHA256SUMS.txt")
         .is_file());
 
-    // Nowhere: both places are named.
+    // Nowhere: both places are named, with why.
     let mut cmd = dollup(&home);
     env(&mut cmd);
     let msg = fail(cmd.args(["pull", "drt", "9.9.11"]));
     assert!(
-        msg.contains("v9.9.11 is at neither the mirror") && msg.contains("nor the origin"),
+        msg.contains("v9.9.11 is at neither the origin nor the mirror"),
+        "{msg}"
+    );
+    assert!(
+        msg.contains(&format!(
+            "the origin (file://{}/download/v9.9.11)",
+            origin.display()
+        )) && msg.contains(&format!("the mirror (file://{}/v9.9.11)", mirror.display())),
         "{msg}"
     );
 
-    // `latest` is the mirror's stable channel and never falls back.
+    // The origin's bytes are not what its own sums say: refused, not
+    // passed over. The mirror's good copy is never asked for, because
+    // "somewhere else" is not the answer to "someone changed something".
+    write_origin(&origin, "v9.9.12", b"#!/bin/sh\necho twelve\n", false);
+    for asset in ASSETS {
+        fs::write(
+            origin.join("download/v9.9.12").join(asset),
+            b"#!/bin/sh\necho tampered\n",
+        )
+        .unwrap();
+    }
+    write_release(
+        &mirror.join("v9.9.12"),
+        "v9.9.12",
+        b"#!/bin/sh\necho twelve\n",
+        &ASSETS,
+    );
     let mut cmd = dollup(&home);
     env(&mut cmd);
-    let out = run(cmd.args(["pull", "drt"]));
-    assert!(
-        out.contains("already cached") || out.contains("cached drt 9.9.9"),
-        "{out}"
-    );
+    let msg = fail(cmd.args(["pull", "drt", "9.9.12"]));
+    assert!(msg.contains("checksum mismatch"), "{msg}");
+    assert!(!msg.contains("asking the mirror"), "{msg}");
+    assert!(!home.join(".dollup/cache/drt/9.9.12").exists());
+
+    // `--from` is the operator's word: one directory, no fallback, and the
+    // directory's own error.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let nowhere = format!("file://{}/download/v9.9.11", origin.display());
+    let msg = fail(cmd.args(["pull", "drt", "9.9.11", "--from", &nowhere]));
+    assert!(msg.contains("no drt for this platform at"), "{msg}");
+    assert!(!msg.contains("the mirror"), "{msg}");
 
     // Audit on a box with no cache: the sums for a candidate come from the
-    // origin when the mirror has none, so the binary is still verified.
+    // origin, and for a release the origin no longer has from the mirror,
+    // so the binary is verified either way.
     let home2 = tmp.path().join("home2");
     let root = tmp.path().join("root");
     let mut cmd = dollup(&home2);
     env(&mut cmd);
     run(cmd.arg("--root").arg(&root).args(["init", "demo"]));
+    let pin = |version: &str| {
+        let mut pinned = project(&root);
+        pinned["drt"] = version.into();
+        fs::write(
+            root.join(".drt_root/project.json"),
+            serde_json::to_vec_pretty(&pinned).unwrap(),
+        )
+        .unwrap();
+    };
     fs::write(root.join(".drt_root/drt"), b"#!/bin/sh\necho candidate\n").unwrap();
-    let mut pinned = project(&root);
-    pinned["drt"] = "9.9.10rc1".into();
-    fs::write(
-        root.join(".drt_root/project.json"),
-        serde_json::to_vec_pretty(&pinned).unwrap(),
-    )
-    .unwrap();
+    pin("9.9.10rc1");
     let mut cmd = dollup(&home2);
     env(&mut cmd);
     let out = run(cmd.arg("--root").arg(&root).arg("audit"));
@@ -410,10 +489,97 @@ fn a_release_the_mirror_does_not_carry_is_taken_from_the_origin_and_said() {
     );
     assert!(
         out.contains(&format!(
-            "per file://{}/v9.9.10rc1/SHA256SUMS.txt",
+            "per file://{}/download/v9.9.10rc1/SHA256SUMS.txt",
             origin.display()
         )),
         "{out}"
+    );
+    fs::write(root.join(".drt_root/drt"), b"#!/bin/sh\necho eight\n").unwrap();
+    pin("9.9.8");
+    let mut cmd = dollup(&home2);
+    env(&mut cmd);
+    let out = run(cmd.arg("--root").arg(&root).arg("audit"));
+    assert!(out.contains("drt: 9.9.8 pinned, 9.9.8 present"), "{out}");
+    assert!(
+        out.contains(&format!(
+            "per file://{}/v9.9.8/SHA256SUMS.txt",
+            mirror.display()
+        )),
+        "{out}"
+    );
+}
+
+/// A pin written under the old candidate spelling names the same release as
+/// a binary cut under the new one (doc/ALIGNMENT.md §10): `deploy` raises
+/// no mismatch, `audit` says one version under two spellings, and start
+/// would run -- the comparison is drt-config's, the one start makes.
+/// Existing tags are never respelled, so the pin is fetched under the
+/// spelling it was written in and a wrong spelling still fails by name.
+#[test]
+fn a_pin_in_the_old_spelling_matches_a_binary_in_the_new_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let origin = write_origin(
+        &tmp.path().join("origin"),
+        "v9.9.13-rc.1",
+        b"#!/bin/sh\necho rc\n",
+        false,
+    );
+    let mirror = tmp.path().join("mirror");
+    fs::create_dir_all(&mirror).unwrap();
+    let env = |cmd: &mut Command| {
+        cmd.env(
+            "DOLLUP_DRT_RELEASES",
+            format!("file://{}", origin.display()),
+        )
+        .env("DOLLUP_DRT_MIRROR", format!("file://{}", mirror.display()));
+    };
+    let root = tmp.path().join("root");
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    run(cmd.arg("--root").arg(&root).args(["init", "demo"]));
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd
+        .arg("--root")
+        .arg(&root)
+        .args(["pin", "drt", "9.9.13-rc.1"]));
+    assert!(out.contains("pinned drt 9.9.13-rc.1"), "{out}");
+
+    // The pin rewritten in the old spelling, as a root from before the
+    // cutover carries it.
+    let mut pinned = project(&root);
+    pinned["drt"] = "9.9.13rc1".into();
+    fs::write(
+        root.join(".drt_root/project.json"),
+        serde_json::to_vec_pretty(&pinned).unwrap(),
+    )
+    .unwrap();
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd.arg("--root").arg(&root).arg("audit"));
+    assert!(
+        out.contains("drt: 9.9.13rc1 pinned, 9.9.13-rc.1 present"),
+        "{out}"
+    );
+    assert!(out.contains("one version under two spellings"), "{out}");
+    assert!(out.contains("start would run"), "{out}");
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let out = run(cmd
+        .arg("--root")
+        .arg(&root)
+        .args(["deploy", "drt", "9.9.13-rc.1"]));
+    assert!(!out.contains("the pin is"), "no mismatch note: {out}");
+
+    // A spelling nothing was ever tagged under is looked for as written,
+    // and fails by name rather than being rewritten into a guess.
+    let mut cmd = dollup(&home);
+    env(&mut cmd);
+    let msg = fail(cmd.args(["pull", "drt", "9.9.13rc1"]));
+    assert!(
+        msg.contains("v9.9.13rc1 is at neither the origin nor the mirror"),
+        "{msg}"
     );
 }
 

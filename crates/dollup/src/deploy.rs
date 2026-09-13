@@ -58,8 +58,10 @@ pub fn deploy_drt(dir: &Path, version: Option<&str>, opts: &Opts) -> Result<Vec<
         cached.release.version,
         dest.display()
     ));
+    // One version under two spellings is no mismatch (doc/ALIGNMENT.md
+    // §10): the comparison is drt-config's, the one start makes.
     if let Some(pinned) = &project.drt {
-        if pinned != &cached.release.version {
+        if !drt_config::version::same(pinned, &cached.release.version) {
             lines.push(format!(
                 "note: the pin is {pinned} and the binary is now {}; start refuses that \
                  mismatch by name until `pin drt {}` moves the pin",

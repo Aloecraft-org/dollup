@@ -8,8 +8,9 @@
 //! its version — audit is meant to be safe on a root you just cloned and do
 //! not trust — so the pin is checked by hashing the binary against the
 //! pinned release's own SHA256SUMS.txt: from the cache when `dollup pull drt`
-//! has filled it, from the mirror otherwise, and left unverified by name
-//! when neither answers. And it writes nothing, the cache included.
+//! has filled it, from the origin or the mirror otherwise, and left
+//! unverified by name when none answers. And it writes nothing, the cache
+//! included.
 //!
 //! What it reports is `drt_config::resolve::resolve` — the function `drt
 //! start` and `stdlib:preflight` call — over the same files, plus the one
@@ -261,8 +262,10 @@ fn check_binary(root_dir: &Path, pinned: Option<&str>) -> BinaryCheck {
     // 0.5.0rc9" — and resolution says the same once told what is present.
     // A candidate is its own release: a root pinned to `0.5.0` does not run
     // the `0.5.0rc9` binary, and audit must not call that unverified.
+    // Two spellings of one version are one version (doc/ALIGNMENT.md §10):
+    // drt-config's normaliser decides, the same one start's own check uses.
     match runtime::identify(&hex) {
-        Some((present, sums)) if present != pinned => BinaryCheck {
+        Some((present, sums)) if !drt_config::version::same(&present, pinned) => BinaryCheck {
             version: Some(present.clone()),
             line: format!(
                 "drt: {pinned} pinned, but .drt_root/drt is not a {pinned} build: it is \
@@ -273,13 +276,22 @@ fn check_binary(root_dir: &Path, pinned: Option<&str>) -> BinaryCheck {
             // Resolution blocks this one, in start's words.
             blocks: false,
         },
-        Some((_, sums)) => BinaryCheck {
-            version: Some(pinned.to_string()),
-            line: format!(
-                "drt: {pinned} pinned, {pinned} present (by sha256, per the cached sums at {}; \
-                 audit never executes it)",
-                sums.display()
-            ),
+        Some((present, sums)) => BinaryCheck {
+            version: Some(present.clone()),
+            line: if present == pinned {
+                format!(
+                    "drt: {pinned} pinned, {pinned} present (by sha256, per the cached sums at \
+                     {}; audit never executes it)",
+                    sums.display()
+                )
+            } else {
+                format!(
+                    "drt: {pinned} pinned, {present} present — one version under two spellings \
+                     (doc/ALIGNMENT.md §10; by sha256, per the cached sums at {}; audit never \
+                     executes it)",
+                    sums.display()
+                )
+            },
             blocks: false,
         },
         None => match disowned_by {
@@ -305,7 +317,8 @@ fn check_binary(root_dir: &Path, pinned: Option<&str>) -> BinaryCheck {
 }
 
 /// The pinned release's sums: from the cache when `dollup pull drt` has
-/// filled it, else from the mirror. Never written here — audit reports.
+/// filled it, else from the origin or the mirror. Never written here —
+/// audit reports.
 fn sums_for(pinned: &str) -> Result<(String, String)> {
     if let Some(cached) = home::drt_sums_path(pinned) {
         if let Ok(text) = fs::read_to_string(&cached) {
@@ -320,18 +333,23 @@ fn sums_for(pinned: &str) -> Result<(String, String)> {
     } else {
         format!("v{pinned}")
     };
-    // The mirror first, then the origin it copies: a candidate is not on
-    // the mirror, and a root pinned to one is still a root to audit.
-    let mirror = format!("{}/SHA256SUMS.txt", runtime::channel_for(&tag));
-    let origin = format!("{}/SHA256SUMS.txt", runtime::origin_for(&tag));
-    for url in [&mirror, &origin] {
+    // The origin first, then the mirror, the order `pull drt` asks in: a
+    // candidate is at the origin and not on the mirror, a release the
+    // origin has dropped is on the mirror, and a root pinned to either is
+    // still a root to audit.
+    let urls: Vec<String> = runtime::sources_for(&tag, None)
+        .iter()
+        .map(|source| format!("{}/SHA256SUMS.txt", source.base))
+        .collect();
+    for url in &urls {
         if let Ok(bytes) = runtime::read_url(url) {
             return Ok((String::from_utf8_lossy(&bytes).into_owned(), url.clone()));
         }
     }
     bail!(
         "no cached SHA256SUMS.txt for {pinned} (`dollup pull drt {pinned}` caches one), and \
-         neither {mirror} nor {origin} answered"
+         neither {} answered",
+        urls.join(" nor ")
     );
 }
 
