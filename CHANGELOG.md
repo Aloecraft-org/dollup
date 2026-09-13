@@ -33,6 +33,7 @@ nothing named.
 
 - drt-config v0.6.1-rc.2 is embedded, and a pin is compared through its spelling normaliser (doc/ALIGNMENT.md §10), the comparison `drt start` makes: a root pinned `0.5.0rc9` runs a binary cut as `v0.5.0-rc.9`, with no mismatch note from `deploy` and `audit` naming one version under two spellings. Existing tags are never respelled, so a pin is still fetched under the spelling it was written in, and a spelling nothing was tagged under fails by name.
 - `install.sh` asks GitHub first and the mirror second, for the same reason, and prints which one answered.
+- `DOLLUP_DRT_RELEASES` replaces GitHub's `releases/` -- the base with `download/<tag>/` and `latest/download/` under it -- where it replaced `releases/download/` before: the host moves, the layout under it does not. `DOLLUP_DRT_MIRROR` is unchanged.
 
 ### Removed
 
