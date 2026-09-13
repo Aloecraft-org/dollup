@@ -1,8 +1,9 @@
 {
   "schema": 1,
   "repo": "Aloecraft-org/dollup",
-  "latest": "v0.1.0",
+  "latest": "v0.1.1",
   "mirror_tags": [
+    "v0.1.1",
     "v0.1.0",
     "v0.0.1"
   ],
@@ -10,15 +11,15 @@
     {
       "version": "0.1.1",
       "tag": "v0.1.1",
-      "date": null,
-      "status": "unreleased",
+      "date": "2026-09-13",
+      "status": "released",
       "stable": true,
-      "mirror": false,
+      "mirror": true,
       "dollup_repo": 1,
       "drt_config": "cf6e22b0c3e739cc007878765174d99798ce399b",
       "summary": "The standard repo's peer, and the origin first. drt-std-lib is\nsigned, so `init` now pins it twice under one key: the served copy\nand GitHub's zipball of the same tree, interchangeable because\nidentity is the content hash. And drt releases are taken from\nGitHub's releases first and the release mirror second, for as long\nas the mirror lags, so `pull drt 0.6.1-rc.2` is one command with\nnothing named.\n",
       "upgrading": null,
-      "latest": false,
+      "latest": true,
       "sections": {
         "added": [
           "`init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md \u00a72). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down.",
@@ -33,7 +34,7 @@
           "The Linux artifact's old name, `dollup_linux_static_x86_64`, is no longer published beside `dollup_linux_x86_64_musl`; v0.1.0 carried both for one release (doc/ALIGNMENT.md \u00a74)."
         ]
       },
-      "notes_md": "## [0.1.1] - unreleased\n\n`v0.1.1` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`\n\nThe standard repo's peer, and the origin first. drt-std-lib is\nsigned, so `init` now pins it twice under one key: the served copy\nand GitHub's zipball of the same tree, interchangeable because\nidentity is the content hash. And drt releases are taken from\nGitHub's releases first and the release mirror second, for as long\nas the mirror lags, so `pull drt 0.6.1-rc.2` is one command with\nnothing named.\n\n### Added\n\n- `init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md \u00a72). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down.\n- `pull drt`, `deploy drt`, `pin drt`, `get drt` and `audit` ask GitHub's releases first and the release mirror second. A place that cannot be read is passed over and the next asked, said in the note and the report; a place whose bytes disagree with its own sums is a refusal no later place papers over. `latest` is the origin's newest stable release, then the mirror's. `--from` still replaces both and never falls back. Verified against v0.6.1-rc.2 with nothing named.\n\n### Changed\n\n- drt-config v0.6.1-rc.2 is embedded, and a pin is compared through its spelling normaliser (doc/ALIGNMENT.md \u00a710), the comparison `drt start` makes: a root pinned `0.5.0rc9` runs a binary cut as `v0.5.0-rc.9`, with no mismatch note from `deploy` and `audit` naming one version under two spellings. Existing tags are never respelled, so a pin is still fetched under the spelling it was written in, and a spelling nothing was tagged under fails by name.\n- `install.sh` asks GitHub first and the mirror second, for the same reason, and prints which one answered.\n- `DOLLUP_DRT_RELEASES` replaces GitHub's `releases/` -- the base with `download/<tag>/` and `latest/download/` under it -- where it replaced `releases/download/` before: the host moves, the layout under it does not. `DOLLUP_DRT_MIRROR` is unchanged.\n\n### Removed\n\n- The Linux artifact's old name, `dollup_linux_static_x86_64`, is no longer published beside `dollup_linux_x86_64_musl`; v0.1.0 carried both for one release (doc/ALIGNMENT.md \u00a74).\n"
+      "notes_md": "## [0.1.1] - 2026-09-13\n\n`v0.1.1` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`\n\nThe standard repo's peer, and the origin first. drt-std-lib is\nsigned, so `init` now pins it twice under one key: the served copy\nand GitHub's zipball of the same tree, interchangeable because\nidentity is the content hash. And drt releases are taken from\nGitHub's releases first and the release mirror second, for as long\nas the mirror lags, so `pull drt 0.6.1-rc.2` is one command with\nnothing named.\n\n### Added\n\n- `init` scaffolds the zipball peer of the standard repo beside the served copy, under the same pinned key (RepoFormat.md \u00a72). Verified over the network: a fresh root pulled `hello` through the peer, signature checked, while the served copy was still down.\n- `pull drt`, `deploy drt`, `pin drt`, `get drt` and `audit` ask GitHub's releases first and the release mirror second. A place that cannot be read is passed over and the next asked, said in the note and the report; a place whose bytes disagree with its own sums is a refusal no later place papers over. `latest` is the origin's newest stable release, then the mirror's. `--from` still replaces both and never falls back. Verified against v0.6.1-rc.2 with nothing named.\n\n### Changed\n\n- drt-config v0.6.1-rc.2 is embedded, and a pin is compared through its spelling normaliser (doc/ALIGNMENT.md \u00a710), the comparison `drt start` makes: a root pinned `0.5.0rc9` runs a binary cut as `v0.5.0-rc.9`, with no mismatch note from `deploy` and `audit` naming one version under two spellings. Existing tags are never respelled, so a pin is still fetched under the spelling it was written in, and a spelling nothing was tagged under fails by name.\n- `install.sh` asks GitHub first and the mirror second, for the same reason, and prints which one answered.\n- `DOLLUP_DRT_RELEASES` replaces GitHub's `releases/` -- the base with `download/<tag>/` and `latest/download/` under it -- where it replaced `releases/download/` before: the host moves, the layout under it does not. `DOLLUP_DRT_MIRROR` is unchanged.\n\n### Removed\n\n- The Linux artifact's old name, `dollup_linux_static_x86_64`, is no longer published beside `dollup_linux_x86_64_musl`; v0.1.0 carried both for one release (doc/ALIGNMENT.md \u00a74).\n"
     },
     {
       "version": "0.1.0",
@@ -46,7 +47,7 @@
       "drt_config": "eacfbe9b1c8322fa663187ec1fcfe0f774d4d94c",
       "summary": "A root is a directory, and dollup fills it. `init` writes\n`.drt_root/` with a declared ceiling, `consent` accepts it, `audit`\nreports what `drt start` would do in it and never does it, `pull`\nlands packages where `require` will find them, `pull drt` / `deploy\ndrt` / `pin drt` put the runtime in it, and `duplicate` copies it as\na new root. All of it through drt-config, the crate the runtime\nitself resolves with, so what audit says and what start does cannot\ndrift within a release.\n\nThe standard repo moves to its own repository, `drt-std-lib`; a\npackage states its license; a source that cannot be read is passed\nover; a release the mirror does not carry is taken from the origin;\nand this release's own artifacts take the aligned names.\n\nA minor, not a patch, and the first release under the aligned scheme\n(doc/ALIGNMENT.md): the artifact names and what BUILDINFO.txt carries\nchange, which is user-visible.\n",
       "upgrading": "- **The Linux artifact is renamed** (doc/ALIGNMENT.md \u00a74):\n  `dollup_linux_static_x86_64` is `dollup_linux_x86_64_musl`. This\n  release publishes both names; the next drops the old one. The\n  darwin names are already the aligned ones (`arm64` is the token)\n  and do not change. `install.sh` knows both spellings.\n- **`init` writes a root, not a `dollup.json` app.** An existing\n  `dollup.json` app keeps working through `-c dollup.json`; a new\n  directory gets `.drt_root/` with `project.json`, `consent.json`,\n  a `debug` profile and `dlua/app.dlua`.\n- **A published package states its license.** `repo seal` and `repo\n  index` refuse a manifest without `\"license\"`; a package published\n  before the field existed still resolves and is reported as\n  declaring none.\n- **`add` is `pull`**, and bare `push`/`pull <url>` moved under\n  `snapshot`. The old spellings say where to go.\n",
-      "latest": true,
+      "latest": false,
       "sections": {
         "added": [
           "**A root**: `dollup init [name] [profile]` writes `.drt_root/` with\n`project.json` (the declared ceiling, never computed), a profile,\n`consent.json` over the ceiling, `dollup.lock`, and `dlua/` beside\nit; `dollup new <name>` makes the directory first. Discovery does\nnot walk up; `--root` names one.\n",
