@@ -82,9 +82,12 @@ enum Verb {
         /// what it does.
         #[arg(long)]
         with_host_native: bool,
-        /// For `pull drt`: where to fetch from, replacing the origin and the mirror.
-        /// Takes `file://` too, which is the air-gapped case.
-        #[arg(long, value_name = "URL")]
+        /// For `pull drt`: a release DIRECTORY to fetch from, replacing
+        /// the origin and the mirror. The asset name, SHA256SUMS.txt and
+        /// BUILDINFO.txt are appended to it, so this is the directory the
+        /// asset sits in and never the asset's own URL. Takes `file://`
+        /// too, which is the air-gapped case.
+        #[arg(long, value_name = "DIR-URL")]
         from: Option<String>,
         /// For `pull drt`: the size profile rather than the full runtime.
         #[arg(long)]
@@ -99,8 +102,10 @@ enum Verb {
         what: String,
         /// The release (default: the pin in project.json).
         version: Option<String>,
-        /// Where to fetch from if the cache lacks it; `file://` works.
-        #[arg(long, value_name = "URL")]
+        /// A release DIRECTORY to fetch from if the cache lacks it; the
+        /// asset name is appended to it, never included in it. `file://`
+        /// works.
+        #[arg(long, value_name = "DIR-URL")]
         from: Option<String>,
         /// The size profile rather than the full runtime.
         #[arg(long)]
@@ -119,8 +124,10 @@ enum Verb {
         /// Every recorded root on this box that is still there.
         #[arg(long)]
         all: bool,
-        /// Where to fetch from if the cache lacks it; `file://` works.
-        #[arg(long, value_name = "URL")]
+        /// A release DIRECTORY to fetch from if the cache lacks it; the
+        /// asset name is appended to it, never included in it. `file://`
+        /// works.
+        #[arg(long, value_name = "DIR-URL")]
         from: Option<String>,
         /// The size profile rather than the full runtime.
         #[arg(long)]
@@ -200,9 +207,12 @@ enum Verb {
         /// The size profile rather than the full runtime.
         #[arg(long)]
         slim: bool,
-        /// Where to fetch from, replacing the default channel. Takes
-        /// `file://` too, which is the air-gapped case.
-        #[arg(long, value_name = "URL")]
+        /// A release DIRECTORY to fetch from, replacing the origin and
+        /// the mirror: the asset name, SHA256SUMS.txt and BUILDINFO.txt are
+        /// appended to it, so this is the directory the asset sits in and
+        /// never the asset's own URL. Takes `file://` too, which is the
+        /// air-gapped case.
+        #[arg(long, value_name = "DIR-URL")]
         from: Option<String>,
         /// Where to write it (default: the working directory).
         #[arg(long, value_name = "DIR")]
