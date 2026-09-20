@@ -29,6 +29,19 @@
 //! says that is why it does not use it.
 
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+
+/// How long a connection may take to come up. A reachable host answers in
+/// well under this; one that silently drops the SYN would otherwise hang
+/// until the kernel gives up, which is minutes on some boxes and looks
+/// exactly like a tool that printed nothing and stopped.
+const CONNECT: Duration = Duration::from_secs(15);
+
+/// How long a socket may go quiet mid-transfer before the request is a
+/// failure. This is per read, not for the whole download: a slow link that
+/// keeps delivering bytes is fine, a stalled one is not. dollup fetches a
+/// handful of megabytes, so no legitimate source needs a minute of silence.
+const IDLE: Duration = Duration::from_secs(60);
 
 /// The shared agent. Built once; ureq agents are cheap to clone and pool
 /// connections, which is what makes fetching a repo index and then its
@@ -39,8 +52,17 @@ pub fn agent() -> ureq::Agent {
 }
 
 fn build() -> ureq::Agent {
+    // Timeouts, not an overall deadline: `timeout()` would put a ceiling on
+    // the whole request-response cycle, and a 5 MiB binary down a thin pipe
+    // is a slow request rather than a broken one. What must never happen is
+    // dollup waiting forever with nothing on the terminal, so the two limits
+    // are on *silence* — bringing the connection up, and each read or write
+    // once it is up.
     ureq::AgentBuilder::new()
         .tls_config(Arc::new(client_config()))
+        .timeout_connect(CONNECT)
+        .timeout_read(IDLE)
+        .timeout_write(IDLE)
         .build()
 }
 

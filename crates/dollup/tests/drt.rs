@@ -6,6 +6,11 @@
 //! bases moved by environment), so nothing here reaches the network, and
 //! every platform's asset name is present so the test does not care which
 //! one this box wants.
+//!
+//! And `get drt`, which is the same fetch over the same directories with no
+//! root and no cache in it at all — what `--from` means, what the report is
+//! allowed to claim about the bytes, and what the failure path says about
+//! the file it did not write.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -458,7 +463,11 @@ fn the_origin_is_asked_first_the_mirror_second_and_a_mismatch_stops_the_search()
     env(&mut cmd);
     let nowhere = format!("file://{}/download/v9.9.11", origin.display());
     let msg = fail(cmd.args(["pull", "drt", "9.9.11", "--from", &nowhere]));
-    assert!(msg.contains("no drt for this platform at"), "{msg}");
+    // Not a release directory at all, which is a different complaint from a
+    // release directory with no build for this box: nothing dollup reads is
+    // there, the sums included.
+    assert!(msg.contains("nothing dollup reads is at"), "{msg}");
+    assert!(msg.contains("not a release directory"), "{msg}");
     assert!(!msg.contains("the mirror"), "{msg}");
 
     // Audit on a box with no cache: the sums for a candidate come from the
@@ -617,4 +626,223 @@ fn a_release_under_the_aligned_asset_names_is_read_by_its_sums() {
     assert_eq!(fs::read(root.join(".drt_root/drt")).unwrap(), body);
     let out = run(dollup(&home).arg("--root").arg(&root).arg("audit"));
     assert!(out.contains("drt: 9.9.12 pinned, 9.9.12 present"), "{out}");
+}
+
+/// The mistake the help used to invite: `--from` is a release *directory*,
+/// and the URL a releases page offers to copy is the asset's own. Pasting
+/// that made dollup ask for `<asset>/<asset>` and then report the doubled
+/// directory as though it were what had been asked for. Caught by name now,
+/// before a request goes out, with the URL that would have worked.
+#[test]
+fn a_from_that_names_the_asset_rather_than_its_directory_is_caught_by_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let body = b"#!/bin/sh\necho drt 9.9.9\n";
+    let mirror = write_mirror(&tmp.path().join("mirror"), "v9.9.9", body);
+    let dir = mirror.join("v9.9.9");
+    let out = tmp.path().join("out");
+    fs::create_dir_all(&out).unwrap();
+
+    // Any platform's asset name, not just this box's: the URL someone pastes
+    // is as likely to name another platform's binary, and the mistake is the
+    // same one.
+    for asset in ["drt_linux_x86_64_musl", "drt_darwin_arm64", "BUILDINFO.txt"] {
+        let from = format!("file://{}/{asset}", dir.display());
+        let msg = fail(dollup(&home).args([
+            "get",
+            "drt",
+            "--version",
+            "9.9.9",
+            "--from",
+            &from,
+            "--out",
+            out.to_str().unwrap(),
+        ]));
+        assert!(msg.contains("--from takes a release directory"), "{msg}");
+        assert!(msg.contains(asset), "the segment by name: {msg}");
+        // The URL that works, ready to run.
+        assert!(
+            msg.contains(&format!("--from file://{}", dir.display())),
+            "{msg}"
+        );
+        // The doubled path is named as the explanation — that is the fact
+        // the old message buried — but it is never asked for: the refusal
+        // lands before the first request, so no URL is read.
+        assert!(msg.contains(&format!("{asset}/{asset}")), "{msg}");
+        assert!(!msg.contains("reading file://"), "{msg}");
+        assert!(!msg.contains("fetching file://"), "{msg}");
+        // And the failure path says the destination was left alone.
+        assert!(msg.contains("nothing was written"), "{msg}");
+        assert!(!out.join("drt").exists(), "{msg}");
+    }
+
+    // The same directory without the filename is the whole point: it works.
+    let from = format!("file://{}", dir.display());
+    let got = run(dollup(&home).args([
+        "get",
+        "drt",
+        "--version",
+        "9.9.9",
+        "--from",
+        &from,
+        "--out",
+        out.to_str().unwrap(),
+    ]));
+    assert!(got.contains("drt 9.9.9"), "{got}");
+    assert_eq!(fs::read(out.join("drt")).unwrap(), body);
+}
+
+/// A directory that answers with its sums but carries no build for this box
+/// is a different complaint from a URL that is not a release directory at
+/// all, and the second is what a file masquerading as a directory looks
+/// like. One message each, and the file case said outright.
+#[test]
+fn a_release_directory_with_no_build_for_this_box_is_not_a_missing_directory() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let body = b"#!/bin/sh\necho elsewhere\n";
+    let out = tmp.path().join("out");
+    fs::create_dir_all(&out).unwrap();
+    let get = |from: &str| -> String {
+        fail(dollup(&home).args([
+            "get",
+            "drt",
+            "--version",
+            "9.9.9",
+            "--from",
+            from,
+            "--out",
+            out.to_str().unwrap(),
+        ]))
+    };
+
+    // Laid out right, sums and all, but every asset is for a platform no
+    // box in this test is.
+    let elsewhere = tmp.path().join("elsewhere/v9.9.9");
+    write_release(&elsewhere, "v9.9.9", body, &["drt_plan9_vax"]);
+    let msg = get(&format!("file://{}", elsewhere.display()));
+    assert!(msg.contains("is a release directory, but carries"), "{msg}");
+    assert!(msg.contains("no drt for this platform"), "{msg}");
+    assert!(!msg.contains("drop the last segment"), "{msg}");
+
+    // A file. dollup can see that this one is, so it says so rather than
+    // listing what it failed to find inside it.
+    let file = tmp.path().join("v9.9.9.tar.gz");
+    fs::write(&file, body).unwrap();
+    let msg = get(&format!("file://{}", file.display()));
+    assert!(msg.contains("is a file, not a release directory"), "{msg}");
+    assert!(msg.contains("drop the last segment"), "{msg}");
+}
+
+/// `--version` never reaches the URL when `--from` is given — the directory
+/// named *is* the release — so the report reads the version back off the
+/// BUILDINFO.txt it fetched rather than repeating what was asked for. A
+/// label that can disagree with the file is worse than no label.
+#[test]
+fn get_reports_the_version_the_source_served_not_the_one_asked_for() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let body = b"#!/bin/sh\necho drt 9.9.9\n";
+    let mirror = write_mirror(&tmp.path().join("mirror"), "v9.9.9", body);
+    let from = format!("file://{}", mirror.join("v9.9.9").display());
+    let out = tmp.path().join("out");
+    fs::create_dir_all(&out).unwrap();
+
+    let got = run(dollup(&home).args([
+        "get",
+        "drt",
+        "--version",
+        "9.9.8",
+        "--from",
+        &from,
+        "--out",
+        out.to_str().unwrap(),
+    ]));
+    assert!(got.contains("drt 9.9.9"), "what was written: {got}");
+    assert!(!got.contains("drt 9.9.8)"), "not what was asked for: {got}");
+    assert!(
+        got.contains("asked for drt 9.9.8 and the source served 9.9.9"),
+        "{got}"
+    );
+    assert_eq!(fs::read(out.join("drt")).unwrap(), body);
+
+    // `pull` keys the cache by version and `audit` reads that key back, so
+    // there the same disagreement is not a label to correct but a directory
+    // not to write.
+    let msg = fail(dollup(&home).args(["pull", "drt", "9.9.8", "--from", &from]));
+    assert!(msg.contains("serves 9.9.9"), "{msg}");
+    assert!(msg.contains("tag: v9.9.9"), "{msg}");
+    assert!(!home.join(".dollup/cache/drt/9.9.8").exists(), "{msg}");
+    // Asked for what it is, it caches.
+    let out = run(dollup(&home).args(["pull", "drt", "9.9.9", "--from", &from]));
+    assert!(out.contains("cached drt 9.9.9"), "{out}");
+}
+
+/// `get` writes into the working directory, where a `drt` from an earlier
+/// run is usually already sitting, so a failure has to say that the file
+/// there is not the one just asked for.
+#[test]
+fn a_failed_get_says_the_destination_was_left_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let out = tmp.path().join("out");
+    fs::create_dir_all(&out).unwrap();
+    let nowhere = format!("file://{}/nothing/v9.9.9", tmp.path().display());
+    let get = |out: &Path| -> String {
+        fail(dollup(&home).args([
+            "get",
+            "drt",
+            "--version",
+            "9.9.9",
+            "--from",
+            &nowhere,
+            "--out",
+            out.to_str().unwrap(),
+        ]))
+    };
+
+    // Nothing there to confuse anyone with, and it says so.
+    let msg = get(&out);
+    assert!(msg.contains("nothing was written"), "{msg}");
+    assert!(msg.contains("was not created"), "{msg}");
+    assert!(!out.join("drt").exists(), "{msg}");
+
+    // An older binary sitting at the destination: untouched, and named as
+    // untouched, which is the question the output could not answer.
+    let older = b"#!/bin/sh\necho an older drt\n";
+    fs::write(out.join("drt"), older).unwrap();
+    let msg = get(&out);
+    assert!(msg.contains("nothing was written"), "{msg}");
+    assert!(msg.contains("is whatever it was before this ran"), "{msg}");
+    assert_eq!(fs::read(out.join("drt")).unwrap(), older);
+}
+
+/// `DRT_VERSION` is drt's own installer knob. dollup is right to ignore it,
+/// but ignoring it silently leaves the operator with two confusing facts at
+/// once: the variable did nothing, and the version that arrived is whatever
+/// `latest` means — the newest *stable* release, which can be far behind a
+/// dev build. The note is only a note; it changes nothing.
+#[test]
+fn an_ignored_drt_installer_variable_is_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let body = b"#!/bin/sh\necho drt 9.9.9\n";
+    let mirror = write_mirror(&tmp.path().join("mirror"), "v9.9.9", body);
+    let from = format!("file://{}", mirror.join("v9.9.9").display());
+
+    let out = run(dollup(&home)
+        .env("DRT_VERSION", "v9.9.99-dev.3")
+        .args(["pull", "drt", "9.9.9", "--from", &from]));
+    assert!(out.contains("DRT_VERSION=v9.9.99-dev.3"), "{out}");
+    assert!(out.contains("drt's installer knob, not dollup's"), "{out}");
+    assert!(out.contains("this run: 9.9.9"), "{out}");
+    // Ignored, not obeyed: the release asked for is the one cached.
+    assert!(out.contains("cached drt 9.9.9"), "{out}");
+
+    // A variable that agrees with the version in hand is nobody's
+    // confusion, whichever spelling it is written in.
+    let out = run(dollup(&home)
+        .env("DRT_VERSION", "v9.9.9")
+        .args(["pull", "drt", "9.9.9", "--from", &from]));
+    assert!(!out.contains("DRT_VERSION"), "{out}");
 }

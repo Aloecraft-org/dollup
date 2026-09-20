@@ -47,12 +47,42 @@ schema: 1
 repo: Aloecraft-org/dollup
 
 releases:
+  - version: 0.1.2
+    tag: v0.1.2
+    date: 2026-09-19
+    status: released
+    stable: true
+    latest: true
+    mirror: true
+    dollup_repo: 1
+    drt_config: cf6e22b0c3e739cc007878765174d99798ce399b
+    summary: |
+      `--from` says what it takes, and the report says what it got. Passing
+      a release asset's own URL -- the one a releases page offers to copy --
+      is now caught by name with the URL that works, rather than doubling
+      the filename and reporting the doubled directory as though it were
+      what was asked for. `get drt` reads the version back off the
+      BUILDINFO.txt it fetched instead of repeating what was asked for, so
+      the line cannot disagree with the file it names, and a failed `get`
+      says the destination was left alone. Every HTTP read has a timeout, so
+      a source that goes quiet cannot leave dollup waiting with nothing on
+      the terminal.
+    fixed:
+      - "`--from` is a release *directory*, and a `--from` whose last segment is a drt asset name, `SHA256SUMS.txt` or `BUILDINFO.txt` is refused by name before a request goes out, printing the directory URL that works. It used to append the asset name to the filename and then report `<asset>/<asset>` as the directory that had no assets. The check knows every platform's spelling, because a pasted URL is as likely to name another box's binary."
+      - "`get drt` reports the version its source served, read off the fetched `BUILDINFO.txt`, not the `--version` that was asked for -- which with `--from` never reaches the URL at all, since the directory given *is* the release. A disagreement is said out loud; a source that publishes no BUILDINFO.txt is said to be unconfirmed. `pull drt` refuses the same disagreement outright rather than caching one release's bytes under another's name, because the cache is keyed by version and `audit` reads that key back."
+      - "A failed `get drt` says whether anything was written, naming the destination and whether the file there is the one from before the run. The success path already named the destination; the failure path left \"is the ./drt sitting here the one I just asked for\" unanswerable."
+      - "Every HTTPS read has a connect timeout and a per-read idle timeout, so an unanswered connection or a source that goes quiet mid-transfer fails by name instead of blocking indefinitely -- a silent hang being indistinguishable from a silent exit. They are limits on *silence*, not a deadline on the request, so a slow link that keeps delivering bytes still finishes."
+      - "The first request of a fetch -- `SHA256SUMS.txt`, which decides which asset spelling a release carries -- is printed before it is made, like every other URL dollup uses. It was the one unannounced read, and a hang in it looked like a tool that had done nothing at all."
+    changed:
+      - "The refusal for a directory with no asset tells apart a release directory that carries no build for this platform (its sums answered) from a URL that is not a release directory at all (nothing dollup reads is there), and for `file://` says outright when the URL names a file rather than a directory."
+      - "A `DRT_VERSION` or `DRT_MIRROR` in the environment is noted as drt's installer knob and not dollup's, naming what dollup reads instead and which version this run is using. dollup still ignores them; ignoring them silently left \"the variable did nothing and the version I got was months old\" as two confusing facts at once."
+      - "`--from`'s help calls it a release directory and says the asset name is appended, where it said \"replacing the default channel\" -- a channel being something you would expect a version to hang off."
+
   - version: 0.1.1
     tag: v0.1.1
     date: 2026-09-13
     status: released
     stable: true
-    latest: true
     mirror: true
     dollup_repo: 1
     drt_config: cf6e22b0c3e739cc007878765174d99798ce399b

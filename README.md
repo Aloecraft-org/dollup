@@ -221,10 +221,15 @@ mirror second, for as long as it lags. A place that cannot be read is
 passed over and the next asked, said; a place whose bytes disagree with
 its own sums is a refusal nothing papers over. `--from` replaces both and
 never falls back, and `DOLLUP_DRT_RELEASES` and `DOLLUP_DRT_MIRROR` move
-the two bases. A pin is compared through drt-config's spelling normaliser
-(`doc/ALIGNMENT.md` §10), so a root pinned `0.5.0rc9` runs a binary cut as
-`v0.5.0-rc.9`; existing tags are never respelled, so a pin is fetched under
-the spelling it was written in.
+the two bases. `--from` names the *directory* the asset sits in, never the
+asset's own URL: dollup appends the asset name, `SHA256SUMS.txt` and
+`BUILDINFO.txt` to it, so a releases page's download link is one segment too
+long and is refused by name with the URL that works. (`DRT_VERSION` and
+`DRT_MIRROR` are drt's own installer's knobs; dollup ignores them and says
+so when they are set.) A pin is compared through drt-config's spelling
+normaliser (`doc/ALIGNMENT.md` §10), so a root pinned `0.5.0rc9` runs a
+binary cut as `v0.5.0-rc.9`; existing tags are never respelled, so a pin is
+fetched under the spelling it was written in.
 
 ## Duplicating a root
 

@@ -143,6 +143,59 @@ pub(crate) fn asset_names(slim: bool) -> Result<Vec<String>> {
     Ok(names)
 }
 
+/// Every asset name a drt release may carry, on any platform and under
+/// either spelling. `asset_names` is this list narrowed to the box it runs
+/// on; this one exists so `--from` can be checked against it, because the
+/// URL someone pastes may perfectly well name another platform's binary and
+/// the mistake is the same one either way.
+fn every_asset_name() -> Vec<String> {
+    let mut names = vec![];
+    for (os_new, os_old, libc, ext) in [
+        ("linux", "linux_static", "_musl", ""),
+        ("darwin", "darwin", "", ""),
+        ("windows", "windows", "", ".exe"),
+    ] {
+        for arch in ["x86_64", "arm64"] {
+            for profile in ["", "_slim"] {
+                names.push(format!("drt_{os_new}_{arch}{libc}{profile}{ext}"));
+                names.push(format!("drt{profile}_{os_old}_{arch}{ext}"));
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// The files dollup reads out of a release directory that are not the asset.
+const BESIDE: [&str; 2] = ["SHA256SUMS.txt", "BUILDINFO.txt"];
+
+/// `--from` names a release *directory*: dollup appends the asset name,
+/// `SHA256SUMS.txt` and `BUILDINFO.txt` to it. The URL a releases page
+/// offers to copy is the asset's own, and passing that makes dollup ask for
+/// `<asset>/<asset>` — a doubled path that the refusal downstream then
+/// reports as though it were what was asked for. So a final segment that is
+/// one of the names dollup appends is caught here, by name, before a single
+/// request goes out.
+fn check_from(from: &str) -> Result<()> {
+    let dir = from.trim_end_matches('/');
+    let segment = dir.rsplit('/').next().unwrap_or_default();
+    let what = if every_asset_name().iter().any(|name| name == segment) {
+        "a release asset"
+    } else if BESIDE.contains(&segment) {
+        "one of the files dollup reads out of the release directory"
+    } else {
+        return Ok(());
+    };
+    let parent = dir.rsplit_once('/').map(|(head, _)| head).unwrap_or(dir);
+    bail!(
+        "--from takes a release directory, and `{segment}` is {what}: dollup appends the \
+         asset name, SHA256SUMS.txt and BUILDINFO.txt to whatever --from names, so this \
+         would ask for {segment}/{segment}.\n  \
+         drop the last segment: --from {parent}"
+    )
+}
+
 /// The asset for this platform that a directory already holds, under
 /// either spelling.
 fn cached_asset(dir: &Path, slim: bool) -> Result<Option<PathBuf>> {
@@ -188,6 +241,10 @@ impl Release {
 /// the refusal names each and asks for a version, rather than caching under
 /// a name that will mean something else tomorrow.
 pub fn resolve(version: &str, from: Option<&str>) -> Result<(Release, Vec<Source>)> {
+    if let Some(url) = from {
+        check_from(url)?;
+    }
+    note_ignored_drt_env(version);
     if version != "latest" {
         let release = Release::named(version);
         let sources = sources_for(&release.tag, from);
@@ -226,6 +283,45 @@ pub fn resolve(version: &str, from: Option<&str>) -> Result<(Release, Vec<Source
     )
 }
 
+/// drt's own installer takes `DRT_VERSION` and `DRT_MIRROR`; dollup takes
+/// `--version` and `DOLLUP_DRT_RELEASES`/`DOLLUP_DRT_MIRROR`. Setting the
+/// installer's and then reaching for dollup is a natural mistake, and its
+/// symptom is the confusing pair "the variable did nothing and the version I
+/// got was months old" — because ignoring `DRT_VERSION` is correct and
+/// leaves dollup on its own default `latest`, which is the newest *stable*
+/// release. One note breaks the tie; it does not change what dollup does.
+fn note_ignored_drt_env(version: &str) {
+    for (theirs, ours) in [
+        ("DRT_VERSION", "--version"),
+        ("DRT_MIRROR", "DOLLUP_DRT_MIRROR"),
+    ] {
+        let Ok(set) = std::env::var(theirs) else {
+            continue;
+        };
+        let set = set.trim();
+        // A `DRT_VERSION` that names the version dollup is using anyway is
+        // nobody's confusion: `v0.4.1` and `0.4.1` are one release, and so
+        // are `0.5.0rc9` and `0.5.0-rc.9` (doc/ALIGNMENT.md §10).
+        let agrees = theirs == "DRT_VERSION"
+            && drt_config::version::same(
+                &Release::named(set).version,
+                &Release::named(version).version,
+            );
+        if set.is_empty() || agrees {
+            continue;
+        }
+        eprintln!(
+            "note: {theirs}={set} is drt's installer knob, not dollup's; dollup ignores it \
+             and reads {ours}{}",
+            if theirs == "DRT_VERSION" {
+                format!(" (this run: {version})")
+            } else {
+                String::new()
+            }
+        );
+    }
+}
+
 /// The `tag: v0.4.1` line of a BUILDINFO.txt.
 fn buildinfo_tag(text: &str) -> Option<String> {
     text.lines()
@@ -260,12 +356,64 @@ pub struct Fetched {
     pub checked: String,
 }
 
+/// Why a directory yielded no asset — which is two quite different
+/// complaints wearing one sentence until they are told apart:
+///
+/// - **A release directory that has no build for this box.** Its
+///   `SHA256SUMS.txt` answered, so the layout is right and the release is
+///   real; it just does not carry these names. Nothing to change about the
+///   URL.
+/// - **Not a release directory at all.** Nothing dollup reads is there, not
+///   even the sums. Usually the URL names a *file* — the asset itself — and
+///   the fix is to drop its last segment. For `file://` that can be said
+///   outright, since the path is right here to stat.
+fn no_asset_at(base: &str, candidates: &[String], had_sums: bool) -> String {
+    let names = candidates.join(", ");
+    if had_sums {
+        return format!(
+            "{base} is a release directory, but carries no drt for this platform: its \
+             SHA256SUMS.txt lists neither {names}"
+        );
+    }
+    let a_file = base
+        .strip_prefix("file://")
+        .is_some_and(|path| Path::new(path).is_file());
+    let mut why = if a_file {
+        format!("{base} is a file, not a release directory")
+    } else {
+        format!(
+            "nothing dollup reads is at {base}: neither SHA256SUMS.txt nor {names}, so this \
+             is not a release directory"
+        )
+    };
+    // The suggestion only where it can be meant: a path dollup can see is a
+    // file, or a last segment that is some drt binary under a spelling
+    // `check_from` does not know yet. A tag directory that simply is not
+    // there does not need to be told to drop its tag.
+    let dir = base.trim_end_matches('/');
+    let segment = dir.rsplit('/').next().unwrap_or_default();
+    if a_file || segment.starts_with("drt") {
+        if let Some((parent, _)) = dir.rsplit_once('/') {
+            why.push_str(&format!(
+                "\n  --from takes the directory the asset sits in; if this is the asset's \
+                 own URL, drop the last segment: --from {parent}"
+            ));
+        }
+    }
+    why
+}
+
 /// Fetch the runtime for this platform from `base`. A missing sums file
 /// warns rather than refuses — a release older than the sums-publishing
 /// workflow is still a release someone may want to pin. A MISMATCH always
 /// refuses.
 pub fn fetch(base: &str, slim: bool) -> Result<Fetched> {
     let candidates = asset_names(slim)?;
+    // Said before it is asked for, like every other URL dollup uses. This is
+    // the first request of the run and until it answers there is nothing else
+    // to print, so an unannounced one is a tool that appears to have done
+    // nothing at all.
+    println!("reading {base}/SHA256SUMS.txt");
     let sums = read_url(&format!("{base}/SHA256SUMS.txt"))
         .ok()
         .map(|b| String::from_utf8_lossy(&b).into_owned());
@@ -292,12 +440,7 @@ pub fn fetch(base: &str, slim: bool) -> Result<Fetched> {
                     break;
                 }
             }
-            found.with_context(|| {
-                format!(
-                    "no drt for this platform at {base}: none of {} is there",
-                    candidates.join(", ")
-                )
-            })?
+            found.with_context(|| no_asset_at(base, &candidates, sums.is_some()))?
         }
     };
     let checked = match &sums {
@@ -348,19 +491,64 @@ pub struct GetOpts {
 
 /// `dollup get drt`: one file, dropped where you are.
 pub fn get_drt(opts: &GetOpts) -> Result<()> {
-    let (release, sources) = resolve(&opts.version, opts.from.as_deref())?;
-    let (fetched, _) = fetch_release(&release, &sources, opts.slim)?;
     let dest = opts.out.join("drt");
+    let attempt = resolve(&opts.version, opts.from.as_deref()).and_then(|(release, sources)| {
+        Ok((fetch_release(&release, &sources, opts.slim)?, release))
+    });
+    let (fetched, release) = match attempt {
+        Ok(((fetched, _), release)) => (fetched, release),
+        Err(e) => {
+            // `get` writes into the working directory, where a `drt` from an
+            // earlier run is very likely already sitting. The success path
+            // names the destination; the failure path has to say that the
+            // destination is not it, or "is this the binary I just asked
+            // for" has no answer in the output at all.
+            eprintln!(
+                "note: nothing was written; {} {}",
+                dest.display(),
+                if dest.exists() {
+                    "is whatever it was before this ran"
+                } else {
+                    "was not created"
+                }
+            );
+            return Err(e);
+        }
+    };
     write_executable(&dest, &fetched.bytes)
         .with_context(|| format!("writing {}", dest.display()))?;
 
+    // What was downloaded, not what was asked for. With `--from` the
+    // directory given *is* the release and `--version` never reaches the
+    // URL, so asking for one version at another's directory would otherwise
+    // print a label the file disagrees with. The fetched BUILDINFO.txt is
+    // the release's own word, and `fetch` already has it.
+    let served = fetched
+        .buildinfo
+        .as_deref()
+        .and_then(buildinfo_tag)
+        .map(|tag| Release::named(&tag).version);
+    let version = match &served {
+        Some(served) if !drt_config::version::same(served, &release.version) => {
+            eprintln!(
+                "warning: asked for drt {} and the source served {served}; the line below \
+                 names what was written",
+                release.version
+            );
+            served.clone()
+        }
+        Some(served) => served.clone(),
+        None => release.version.clone(),
+    };
     println!(
-        "wrote {} ({}, drt {})",
+        "wrote {} ({}, drt {version})",
         dest.display(),
         human_size(fetched.bytes.len()),
-        release.version
     );
     println!("  checked: {}", fetched.checked);
+    if served.is_none() {
+        println!("  version: as asked for; the source published no BUILDINFO.txt to confirm it");
+    }
     // Name the invocation that works. `get` deliberately installs nothing,
     // so the binary is not on a PATH, and "it is not on your PATH" told
     // people a true thing without telling them what to type.
@@ -403,6 +591,30 @@ pub fn pull_drt(version: &str, from: Option<&str>, slim: bool) -> Result<Cached>
         }
     }
     let (fetched, used) = fetch_release(&release, &sources, slim)?;
+    // The cache is keyed by version and `audit` identifies a deployed binary
+    // by hash against the sums stored under that key, so a directory holding
+    // one release's bytes under another's name is not a mislabel that stops
+    // at the terminal — it is an answer `audit` will go on giving. `--from`
+    // is where the two can part company: the directory given is the release
+    // and `--version` never reaches the URL. So the release's own word is
+    // checked against the key before anything is written.
+    if let Some(served) = fetched.buildinfo.as_deref().and_then(buildinfo_tag) {
+        let served = Release::named(&served);
+        if !drt_config::version::same(&served.version, &release.version) {
+            bail!(
+                "asked for drt {} and {} serves {}: its BUILDINFO.txt says `tag: {}`. \
+                 The cache is keyed by version and audit reads it back, so nothing is \
+                 written under a name the bytes disagree with; `pull drt {} --from {}` \
+                 caches it as what it is",
+                release.version,
+                sources[used].base,
+                served.version,
+                served.tag,
+                served.version,
+                sources[used].base
+            );
+        }
+    }
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     let asset = dir.join(&fetched.asset);
     write_executable(&asset, &fetched.bytes)
@@ -648,6 +860,75 @@ bbb  drt_darwin_arm64
         assert_eq!(
             asset_with_hash(both, "bbb").as_deref(),
             Some("drt_darwin_arm64")
+        );
+    }
+
+    #[test]
+    fn a_from_is_a_directory_and_a_filename_is_caught_before_a_request() {
+        // Every spelling on every platform, because the URL someone pastes
+        // is as likely to be another box's binary.
+        for asset in every_asset_name() {
+            let from = format!("https://example.invalid/releases/download/v0.7.0/{asset}");
+            let msg = format!("{:#}", check_from(&from).unwrap_err());
+            assert!(msg.contains("release directory"), "{asset}: {msg}");
+            assert!(msg.contains(&asset), "names the segment: {msg}");
+            assert!(
+                msg.contains("--from https://example.invalid/releases/download/v0.7.0"),
+                "names the URL that works: {msg}"
+            );
+        }
+        // The files dollup appends for itself, same mistake.
+        assert!(check_from("file:///mnt/xfer/v0.7.0/SHA256SUMS.txt").is_err());
+        assert!(check_from("file:///mnt/xfer/v0.7.0/BUILDINFO.txt").is_err());
+        // And every shape of directory that is one: a tag, `latest`, the
+        // origin's `latest/download`, a trailing slash, a bare host, and a
+        // directory whose name merely starts the way an asset does.
+        for dir in [
+            "file:///mnt/xfer",
+            "file:///mnt/xfer/",
+            "file:///mnt/drt_builds",
+            "https://example.invalid/releases/download/v0.7.0",
+            "https://example.invalid/releases/latest/download",
+            "https://example.invalid/diluvium-drt/latest/",
+            "https://example.invalid",
+        ] {
+            assert!(check_from(dir).is_ok(), "{dir}");
+        }
+        // The asset this box would ask for is in the cross-platform set, so
+        // the two lists cannot drift apart unnoticed.
+        for slim in [false, true] {
+            for name in asset_names(slim).unwrap() {
+                assert!(every_asset_name().contains(&name), "{name}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_directory_with_no_build_here_reads_differently_from_one_that_is_a_file() {
+        let candidates = vec!["drt_linux_x86_64_musl".to_string()];
+        // Sums answered: the layout is right, the release is real, and there
+        // is nothing to change about the URL.
+        let had = no_asset_at("https://example.invalid/v0.7.0", &candidates, true);
+        assert!(
+            had.contains("is a release directory, but carries no drt"),
+            "{had}"
+        );
+        assert!(!had.contains("drop the last segment"), "{had}");
+        // Nothing answered: not a release directory, and no suggestion to
+        // make about a tag directory that simply is not there.
+        let none = no_asset_at("https://example.invalid/v0.7.0", &candidates, false);
+        assert!(none.contains("not a release directory"), "{none}");
+        assert!(!none.contains("drop the last segment"), "{none}");
+        // A last segment that is some drt binary under a spelling this
+        // version has never heard of: say what to drop.
+        let newer = no_asset_at(
+            "https://example.invalid/v0.7.0/drt_sunos_riscv",
+            &candidates,
+            false,
+        );
+        assert!(
+            newer.contains("drop the last segment: --from https://example.invalid/v0.7.0"),
+            "{newer}"
         );
     }
 
