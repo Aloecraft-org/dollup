@@ -12,6 +12,30 @@ than encoding it: each entry names the repo format it reads and writes and
 the drt-config revision it embeds, the same facts `BUILDINFO.txt` carries
 in the release. See `doc/ALIGNMENT.md`.
 
+## [0.1.3] - 2026-09-21
+
+`v0.1.3` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`
+
+`install drt`, the verb between `get` and `deploy`. `get` drops a file
+where you are and `deploy drt` puts one inside a root; neither puts drt
+on your PATH, which is what someone means by installing it. The new
+verb chooses a destination the way both install.sh scripts already do,
+checks the binary beside that destination and moves it into place only
+once it runs, and says which roots pin something else -- because a root
+goes on running its own `.drt_root/drt` whatever is on the PATH.
+
+### Added
+
+- `dollup install drt [version]` puts the runtime on this box's PATH: `/usr/local/bin` when this process can write it, else `~/.local/bin`, else `--prefix`. The same rule dollup's own `install.sh` and drt's follow, so an install never lands somewhere a third spelling chose. Takes `--slim` and `--from` like the other runtime verbs, and fills the same cache `deploy drt` reads, so installing and then pinning a root fetches once.
+- The installed binary is written beside the destination, checked there with `--version`, and moved into place only if it runs -- one atomic rename within a directory. A drt for the wrong architecture is refused with the asset named, and the drt already on the PATH is left exactly as it was, said out loud. This is `get`'s 0.1.2 rule where it costs more to get wrong: a failed install must not have already replaced a working runtime. Upgrading a drt that is currently executing is safe for the same reason -- the directory entry is replaced and a running process keeps its inode.
+- A prefix that is not on `PATH` is noted, as drt's installer notes it: a binary the shell will not find is an install that looks like it did nothing.
+- Recorded roots pinned to a different version are named after an install. Nothing is shadowed -- `drt start` in a root runs `.drt_root/drt` and `audit` reports on that file -- but "the drt I installed is not the drt that ran" is a pair of facts better learned at install time than later. One version under two spellings is no mismatch (doc/ALIGNMENT.md §10).
+
+### Changed
+
+- `get`'s help and module doc now name `install` as the verb that does choose a destination. `get` itself is unchanged and still writes only where it is pointed: the promise that it performs no PATH surgery stays literally true, which is why this is a separate verb rather than a `get --prefix`.
+
+
 ## [0.1.2] - 2026-09-19
 
 `v0.1.2` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`

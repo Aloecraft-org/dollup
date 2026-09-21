@@ -284,7 +284,12 @@ rewrites what exists), `dollup new <name>` (a directory, and a root in it),
 `dollup pull <ref>` (fetch through the shared cache, lock, populate `init/`
 — inert; a template is copied and never locked), `pull drt` (the runtime
 into the cache, `latest` resolved to a version), `deploy drt` (the cache
-into `.drt_root/drt`, by copy), `pin drt` (deploy and record the version in
+into `.drt_root/drt`, by copy), `install drt` (the cache onto this box's
+PATH -- `/usr/local/bin` when writable, else `~/.local/bin`, or `--prefix`;
+checked where it cannot be mistaken for the installed one and moved into
+place only if it runs, so a refusal leaves the working drt alone. Touches no
+root, and roots pinned elsewhere are named: a root runs its own
+`.drt_root/drt`, never this), `pin drt` (deploy and record the version in
 `project.json` — the release tag without its `v`, so a candidate `0.5.0rc9`
 is its own pin; `--all` over every root on the box), `duplicate <path>`
 (this root copied as a new root: fresh `root_id`, `duplicated_from`, the

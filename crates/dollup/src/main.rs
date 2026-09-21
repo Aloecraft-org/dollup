@@ -10,6 +10,7 @@ mod duplicate;
 mod fetch;
 mod home;
 mod http;
+mod install;
 mod ops;
 mod repo;
 mod root;
@@ -196,8 +197,31 @@ enum Verb {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         rest: Vec<String>,
     },
+    /// Put a runtime binary on this box's PATH. One file, hash-checked,
+    /// into /usr/local/bin when you can write it and ~/.local/bin when you
+    /// cannot. Touches no root: a root runs its own `.drt_root/drt`.
+    Install {
+        /// What to install. `drt` is the only one today.
+        what: String,
+        /// The release (default: latest, resolved to the concrete version
+        /// the source names). Positional, as `pull drt` and `deploy drt`
+        /// take it -- this verb fills the same cache they read.
+        version: Option<String>,
+        /// The directory to install into, overriding the default.
+        #[arg(long, value_name = "DIR")]
+        prefix: Option<PathBuf>,
+        /// The size profile rather than the full runtime.
+        #[arg(long)]
+        slim: bool,
+        /// A release DIRECTORY to fetch from if the cache lacks it; the
+        /// asset name is appended to it, never included in it. `file://`
+        /// works, which is the air-gapped case.
+        #[arg(long, value_name = "DIR-URL")]
+        from: Option<String>,
+    },
     /// Fetch a runtime binary into the working directory. One file,
-    /// hash-checked, dropped where you are. It does not install anything.
+    /// hash-checked, dropped where you are. It does not install anything;
+    /// `install` is the verb that does.
     Get {
         /// What to fetch. `drt` is the only one today.
         what: String,
@@ -706,9 +730,28 @@ fn main() -> Result<()> {
                 rest.trim_start_matches("get").trim()
             );
         }
-        // Deliberately does NOT open a deployment: fetching a runtime
+        // Neither of the next two opens a deployment: fetching a runtime
         // binary is not a deployment act, needs no config, and has to work
         // in an empty directory.
+        Verb::Install {
+            what,
+            version,
+            prefix,
+            slim,
+            from,
+        } => {
+            if what != "drt" {
+                anyhow::bail!("`dollup install` knows only `drt` today; got '{what}'");
+            }
+            for line in install::install_drt(&install::InstallOpts {
+                version: version.unwrap_or_else(|| "latest".into()),
+                prefix,
+                slim,
+                from,
+            })? {
+                println!("{line}");
+            }
+        }
         Verb::Get {
             what,
             version,

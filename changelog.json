@@ -1,14 +1,40 @@
 {
   "schema": 1,
   "repo": "Aloecraft-org/dollup",
-  "latest": "v0.1.2",
+  "latest": "v0.1.3",
   "mirror_tags": [
+    "v0.1.3",
     "v0.1.2",
     "v0.1.1",
     "v0.1.0",
     "v0.0.1"
   ],
   "releases": [
+    {
+      "version": "0.1.3",
+      "tag": "v0.1.3",
+      "date": "2026-09-21",
+      "status": "released",
+      "stable": true,
+      "mirror": true,
+      "dollup_repo": 1,
+      "drt_config": "cf6e22b0c3e739cc007878765174d99798ce399b",
+      "summary": "`install drt`, the verb between `get` and `deploy`. `get` drops a file\nwhere you are and `deploy drt` puts one inside a root; neither puts drt\non your PATH, which is what someone means by installing it. The new\nverb chooses a destination the way both install.sh scripts already do,\nchecks the binary beside that destination and moves it into place only\nonce it runs, and says which roots pin something else -- because a root\ngoes on running its own `.drt_root/drt` whatever is on the PATH.\n",
+      "upgrading": null,
+      "latest": true,
+      "sections": {
+        "added": [
+          "`dollup install drt [version]` puts the runtime on this box's PATH: `/usr/local/bin` when this process can write it, else `~/.local/bin`, else `--prefix`. The same rule dollup's own `install.sh` and drt's follow, so an install never lands somewhere a third spelling chose. Takes `--slim` and `--from` like the other runtime verbs, and fills the same cache `deploy drt` reads, so installing and then pinning a root fetches once.",
+          "The installed binary is written beside the destination, checked there with `--version`, and moved into place only if it runs -- one atomic rename within a directory. A drt for the wrong architecture is refused with the asset named, and the drt already on the PATH is left exactly as it was, said out loud. This is `get`'s 0.1.2 rule where it costs more to get wrong: a failed install must not have already replaced a working runtime. Upgrading a drt that is currently executing is safe for the same reason -- the directory entry is replaced and a running process keeps its inode.",
+          "A prefix that is not on `PATH` is noted, as drt's installer notes it: a binary the shell will not find is an install that looks like it did nothing.",
+          "Recorded roots pinned to a different version are named after an install. Nothing is shadowed -- `drt start` in a root runs `.drt_root/drt` and `audit` reports on that file -- but \"the drt I installed is not the drt that ran\" is a pair of facts better learned at install time than later. One version under two spellings is no mismatch (doc/ALIGNMENT.md \u00a710)."
+        ],
+        "changed": [
+          "`get`'s help and module doc now name `install` as the verb that does choose a destination. `get` itself is unchanged and still writes only where it is pointed: the promise that it performs no PATH surgery stays literally true, which is why this is a separate verb rather than a `get --prefix`."
+        ]
+      },
+      "notes_md": "## [0.1.3] - 2026-09-21\n\n`v0.1.3` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`\n\n`install drt`, the verb between `get` and `deploy`. `get` drops a file\nwhere you are and `deploy drt` puts one inside a root; neither puts drt\non your PATH, which is what someone means by installing it. The new\nverb chooses a destination the way both install.sh scripts already do,\nchecks the binary beside that destination and moves it into place only\nonce it runs, and says which roots pin something else -- because a root\ngoes on running its own `.drt_root/drt` whatever is on the PATH.\n\n### Added\n\n- `dollup install drt [version]` puts the runtime on this box's PATH: `/usr/local/bin` when this process can write it, else `~/.local/bin`, else `--prefix`. The same rule dollup's own `install.sh` and drt's follow, so an install never lands somewhere a third spelling chose. Takes `--slim` and `--from` like the other runtime verbs, and fills the same cache `deploy drt` reads, so installing and then pinning a root fetches once.\n- The installed binary is written beside the destination, checked there with `--version`, and moved into place only if it runs -- one atomic rename within a directory. A drt for the wrong architecture is refused with the asset named, and the drt already on the PATH is left exactly as it was, said out loud. This is `get`'s 0.1.2 rule where it costs more to get wrong: a failed install must not have already replaced a working runtime. Upgrading a drt that is currently executing is safe for the same reason -- the directory entry is replaced and a running process keeps its inode.\n- A prefix that is not on `PATH` is noted, as drt's installer notes it: a binary the shell will not find is an install that looks like it did nothing.\n- Recorded roots pinned to a different version are named after an install. Nothing is shadowed -- `drt start` in a root runs `.drt_root/drt` and `audit` reports on that file -- but \"the drt I installed is not the drt that ran\" is a pair of facts better learned at install time than later. One version under two spellings is no mismatch (doc/ALIGNMENT.md \u00a710).\n\n### Changed\n\n- `get`'s help and module doc now name `install` as the verb that does choose a destination. `get` itself is unchanged and still writes only where it is pointed: the promise that it performs no PATH surgery stays literally true, which is why this is a separate verb rather than a `get --prefix`.\n"
+    },
     {
       "version": "0.1.2",
       "tag": "v0.1.2",
@@ -20,7 +46,7 @@
       "drt_config": "cf6e22b0c3e739cc007878765174d99798ce399b",
       "summary": "`--from` says what it takes, and the report says what it got. Passing\na release asset's own URL -- the one a releases page offers to copy --\nis now caught by name with the URL that works, rather than doubling\nthe filename and reporting the doubled directory as though it were\nwhat was asked for. `get drt` reads the version back off the\nBUILDINFO.txt it fetched instead of repeating what was asked for, so\nthe line cannot disagree with the file it names, and a failed `get`\nsays the destination was left alone. Every HTTP read has a timeout, so\na source that goes quiet cannot leave dollup waiting with nothing on\nthe terminal.\n",
       "upgrading": null,
-      "latest": true,
+      "latest": false,
       "sections": {
         "changed": [
           "The refusal for a directory with no asset tells apart a release directory that carries no build for this platform (its sums answered) from a URL that is not a release directory at all (nothing dollup reads is there), and for `file://` says outright when the URL names a file rather than a directory.",
