@@ -68,6 +68,23 @@ dollup get drt --version v0.3.0 --slim  # a pin, and the size profile
 dollup get drt --from file:///mnt/xfer  # air-gapped: a directory, no network
 ```
 
+`get` drops a file where you are and installs nothing. To put drt on your
+PATH instead -- `/usr/local/bin` when you can write it, `~/.local/bin` when
+you cannot, or wherever `--prefix` says:
+
+```sh
+dollup install drt                      # the latest release, onto your PATH
+dollup install drt 0.6.1-rc.2           # a candidate
+dollup install drt --prefix ~/bin       # somewhere of your choosing
+```
+
+It fills the same cache `deploy drt` reads, so installing and then pinning a
+root fetches once. The binary is checked beside the destination and moved
+into place only once it runs, so a drt that will not run on this box leaves
+the one already on your PATH alone. It touches no root: a root runs its own
+`.drt_root/drt`, and any root pinned to another version is named so the two
+are not confused.
+
 The standard repo lives in its own repository,
 [drt-std-lib](https://github.com/Aloecraft-org/drt-std-lib), and `init`
 pins it twice under one key — the served copy and GitHub's zipball of the

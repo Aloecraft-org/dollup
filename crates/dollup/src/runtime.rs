@@ -4,7 +4,11 @@
 //! file, checks its hash against the sums published beside it, writes it
 //! to the working directory, and says where it came from. No install
 //! prefix, no PATH surgery, no `~/.config`, nothing written anywhere the
-//! caller did not point at. If you want it on your PATH, move it.
+//! caller did not point at. If you want it on your PATH, move it -- or use
+//! `dollup install drt`, which is the verb that chooses a destination and
+//! says so. That is deliberately a different verb rather than a flag here:
+//! the paragraph above is a promise, and a `get --prefix` would make it
+//! false. See `install.rs`.
 //!
 //! **On SPEC.md §1's "the binary ships knowing zero URLs".** That rule is
 //! about *package resolution*, and it is untouched here: `add` still
