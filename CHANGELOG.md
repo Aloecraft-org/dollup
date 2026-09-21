@@ -12,7 +12,7 @@ than encoding it: each entry names the repo format it reads and writes and
 the drt-config revision it embeds, the same facts `BUILDINFO.txt` carries
 in the release. See `doc/ALIGNMENT.md`.
 
-## [0.1.3] - unreleased
+## [0.1.3] - 2026-09-21
 
 `v0.1.3` &middot; repo format 1 &middot; drt-config `cf6e22b0c3e7`
 
