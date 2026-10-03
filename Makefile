@@ -21,8 +21,8 @@ semver:
 # The changelog and the tree agree, and the generated files are fresh:
 # what CI runs.
 changelog-check:
-	./script/changelog.py validate
-	./script/changelog.py check
-	./script/changelog.py consistency
+	technoproj-changelog validate
+	technoproj-changelog check
+	technoproj-changelog consistency
 
 .PHONY: echo tag semver changelog-check

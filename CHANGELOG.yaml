@@ -2,7 +2,7 @@
 #
 # This file, not the GitHub release body, is what a release page and the
 # release mirror are generated from. Edit it here; everything downstream is
-# derived. `script/changelog.py generate` writes CHANGELOG.md and
+# derived. `technoproj-changelog generate` writes CHANGELOG.md and
 # changelog.json, and CI fails if they drift.
 #
 # The shape is drt's CHANGELOG.yaml, deliberately -- same tool, same CLI --

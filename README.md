@@ -306,20 +306,23 @@ holds the version a human edits (`make version`, `make tag`, `make inc_pat`,
 `make set_pre KIND=rc N=1`), and the changelog's `version`, `Cargo.toml`
 and `BUILDINFO.txt` all hold the tag body it prints — `0.1.0-rc.1` for the
 tag `v0.1.0-rc.1` — which CI checks. `CHANGELOG.yaml` holds the notes, and
-`script/changelog.py generate` writes `CHANGELOG.md` and `changelog.json`
+`technoproj-changelog generate` writes `CHANGELOG.md` and `changelog.json`
 from it, which CI keeps in step (`make changelog-check`). The tooling is
-[technoproj](https://github.com/Aloecraft-org/technoproj)'s: `script/version.mk`
-is its copy, placed by `technoproj sync`, and `script/changelog.py` is the
-same engine, vendored until the installed one carries dev tags, SemVer
-prerelease versions and the BUILDINFO facts. The release
-workflow is gated on that file: the tag must have an entry, `prerelease`
-derives from its `stable`, the release body is the entry rendered, and
-`BUILDINFO.txt` carries its compatibility facts beside the tag, version,
-commit and branch. The whole shape is `doc/ALIGNMENT.md`.
+[technoproj](https://github.com/Aloecraft-org/technoproj)'s, pinned at
+`v0.3.0` (`pip install "git+https://github.com/Aloecraft-org/technoproj@v0.3.0"`):
+`script/version.mk` is its copy, placed by `technoproj sync`, and
+`script/checks.py` holds the one invariant that is dollup's own, the
+drt-config revision in `Cargo.lock` against the newest entry's. The release
+workflow calls technoproj's shared preflight and publish workflows and is
+gated on that file: the tag must have an entry, `prerelease` derives from
+its `stable`, the release body is the entry rendered, and `BUILDINFO.txt`
+carries its compatibility facts beside the tag, version, commit and branch.
+The whole shape is technoproj's `doc/STANDARD.md`.
 
 To cut a release: set the entry's `status: released` and `date`, move
-`latest: true` onto it, set `mirror: true`, run `generate`, commit, then
-push the tag `make tag` prints or dispatch the Release workflow with it.
+`latest: true` onto it, set `mirror: true`, run `generate`, commit,
+then `technoproj release cut --tag <the tag make tag prints> --publish --yes`,
+or dispatch the Release workflow with it.
 A `vX.Y.Z-dev.N` tag needs no entry: it is a cheap build of the newest
 entry from one commit, one platform, always a prerelease; `make dev-tag`
 prints the next free one, and the nightly workflow cuts one whenever

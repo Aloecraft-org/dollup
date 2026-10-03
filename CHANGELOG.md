@@ -3,7 +3,7 @@
 All notable changes to dollup are recorded here.
 
 Generated from `CHANGELOG.yaml`, which is the source of truth --
-edit that file, then run `script/changelog.py generate`.
+edit that file, then run `technoproj-changelog generate`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
