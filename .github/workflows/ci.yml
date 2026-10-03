@@ -26,5 +26,11 @@ jobs:
       # CHANGELOG.yaml is the source of truth for release notes and the
       # release gate; the generated CHANGELOG.md and changelog.json must
       # match it, and the tree must agree with its newest entry (the
-      # drt-config pin in Cargo.lock, the version stamp when released).
-      - run: pip install --quiet pyyaml && make changelog-check
+      # drt-config pin in Cargo.lock via script/checks.py, the version stamp
+      # when released). The engine is technoproj's, pinned to the same tag
+      # release.yml's shared workflows are, so CI and the release gate run
+      # one tool.
+      - run: pip install --quiet "git+https://github.com/Aloecraft-org/technoproj@v0.3.0"
+      - run: technoproj check
+      - run: make changelog-check
+      - run: technoproj release check-workflow
