@@ -1,0 +1,13 @@
+# Where product truth lives. The operator reads only what is listed here.
+product: dollup
+
+facts:            # single source of truth for product claims
+  repo: Aloecraft-org/dollup
+  path: CHANGELOG.yaml
+
+docs:
+  - README.md
+  - SPEC.md
+  - THREAT-NOTES.md
+  - doc/RepoFormat.md
+  - https://github.com/Aloecraft-org/technoproj/blob/v0.3.0/doc/STANDARD.md
